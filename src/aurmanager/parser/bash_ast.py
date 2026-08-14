@@ -39,6 +39,7 @@ def strip_array_literals(source: str) -> tuple[str, dict[str, str]]:
             break
         out.append(source[last : m.start()])
         name = m.group(1)
+        is_append = m.group(0).startswith(f"{name}+=")
         j = m.end()  # position just after the opening '('
         depth = 1
         in_squote = in_dquote = False
@@ -64,7 +65,12 @@ def strip_array_literals(source: str) -> tuple[str, dict[str, str]]:
                     depth -= 1
             j += 1
         inner = source[start_inner : j - 1]
-        extracted[name] = inner
+        if is_append and name in extracted:
+            # depends+=('foo') should append to the array, not replace it -- common
+            # in PKGBUILDs for arch-conditional dependency lists.
+            extracted[name] = extracted[name] + " " + inner
+        else:
+            extracted[name] = inner
         replaced_span = source[m.start() : j]
         out.append("".join(ch if ch == "\n" else " " for ch in replaced_span))
         last = j
@@ -144,6 +150,15 @@ def parse_script(source: str) -> ParsedScript:
         return ParsedScript(source=source, ast_nodes=nodes, arrays=arrays, parse_error=None)
     except bashlex_errors.ParsingError as e:
         return ParsedScript(source=source, ast_nodes=[], arrays=arrays, parse_error=str(e))
+    except Exception as e:
+        # bashlex doesn't only raise ParsingError for unsupported input -- e.g.
+        # arithmetic expansion $((...)) raises a bare NotImplementedError from deep
+        # inside its substitution module. This is a security scanner parsing
+        # adversarial/malformed input by design: any parse failure must degrade to
+        # a reported parse_error (surfaced by rules/meta.py), never crash the scan.
+        return ParsedScript(
+            source=source, ast_nodes=[], arrays=arrays, parse_error=f"{type(e).__name__}: {e}"
+        )
 
 
 def line_of(offset: int, source: str) -> int:
@@ -169,14 +184,72 @@ def walk(node: Any) -> Iterator[Any]:
         yield from walk(child)
 
 
-def extract_functions(ast_nodes: list[Any], names: tuple[str, ...]) -> dict[str, Any]:
+def extract_functions(ast_nodes: list[Any]) -> dict[str, Any]:
+    """Every function defined in the script, keyed by name. Extracting all of them
+    (rather than filtering to a fixed name list) means split-package override
+    functions like package_foo-doc() are picked up automatically -- makepkg calls
+    package_<pkgname>() instead of package() for split packages, and a fixed name
+    list would make any malicious code hidden there invisible to every rule."""
     functions: dict[str, Any] = {}
     for node in ast_nodes:
         if getattr(node, "kind", None) == "function":
             fname = node.parts[0].word
-            if fname in names:
-                functions[fname] = node
+            functions[fname] = node
     return functions
+
+
+class ModuleScopeNode:
+    """Synthetic pseudo-node bundling every top-level statement that is NOT inside a
+    function definition, so AST-walking rules can inspect it the same way they
+    inspect a function body via walk(). This matters because PKGBUILD is *sourced*
+    by makepkg: top-level statements execute immediately when the file is loaded,
+    before any function is ever called -- code placed outside build()/package() is
+    not somehow safer, and rules that only walk ctx.functions would otherwise miss
+    it entirely."""
+
+    kind = "module_scope"
+
+    def __init__(self, statements: list[Any], pos: tuple[int, int]):
+        self.parts = statements
+        self.pos = pos
+
+
+def build_module_scope(ast_nodes: list[Any], source: str) -> ModuleScopeNode | None:
+    statements = [n for n in ast_nodes if getattr(n, "kind", None) != "function"]
+    if not statements:
+        return None
+    return ModuleScopeNode(statements, pos=(0, len(source)))
+
+
+def mask_function_bodies(ast_nodes: list[Any], source: str) -> str:
+    """Source text with every function body blanked out (space-filled, newlines
+    preserved -- same technique as strip_array_literals), leaving only module/
+    top-level-scope text. Used by regex-based rules that need to search "everything
+    outside a function" as plain text rather than walking the AST."""
+    chars = list(source)
+    for node in ast_nodes:
+        if getattr(node, "kind", None) != "function":
+            continue
+        start, end = node.pos
+        for i in range(start, end):
+            if chars[i] != "\n":
+                chars[i] = " "
+    return "".join(chars)
+
+
+def describe_scope(name: str) -> str:
+    if name == "<module scope>":
+        return "top-level code (runs immediately when the file is sourced)"
+    return f"'{name}()'"
+
+
+def iter_scopes(ctx: Any) -> Iterator[tuple[str, Any]]:
+    """Yield (label, node) for every function in ctx.functions plus, if present, the
+    module/top-level scope -- the standard iteration rules should use instead of
+    `ctx.functions.items()` directly, so top-level code isn't silently skipped."""
+    yield from ctx.functions.items()
+    if ctx.module_scope is not None:
+        yield ("<module scope>", ctx.module_scope)
 
 
 def node_text(node: Any, source: str) -> str:

@@ -4,7 +4,7 @@ import re
 from typing import Iterable
 
 from ..model import Finding, RuleContext, Severity
-from ..parser.bash_ast import line_of, walk
+from ..parser.bash_ast import describe_scope, line_of
 from .base import Rule
 
 _NETWORK_UPLOAD_RE = re.compile(
@@ -28,31 +28,46 @@ class _ReadThenUploadRule(Rule):
     read_pattern: re.Pattern
     what: str
 
+    def _scan(self, ctx: RuleContext, scope_label: str, body_text: str, base_offset: int) -> list[Finding]:
+        read_match = self.read_pattern.search(body_text)
+        upload_match = _NETWORK_UPLOAD_RE.search(body_text)
+        if not (read_match and upload_match):
+            return []
+        offset = base_offset + read_match.start()
+        line = line_of(offset, ctx.source)
+        snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+        return [
+            Finding(
+                rule_id=self.rule_id,
+                severity=self.default_severity,
+                message=(
+                    f"{scope_label} reads {self.what} and also makes an outbound "
+                    f"network upload -- looks like credential exfiltration."
+                ),
+                file=ctx.file,
+                line=line,
+                snippet=snippet,
+                incident_ref=self.incident_refs[0] if self.incident_refs else None,
+                remediation=f"A package has no legitimate reason to read {self.what} and phone home.",
+            )
+        ]
+
     def check(self, ctx: RuleContext) -> Iterable[Finding]:
         findings: list[Finding] = []
         for fn_name, fn_node in ctx.functions.items():
+            if fn_node is None:
+                continue
             body_text = ctx.source[fn_node.pos[0] : fn_node.pos[1]]
-            read_match = self.read_pattern.search(body_text)
-            upload_match = _NETWORK_UPLOAD_RE.search(body_text)
-            if read_match and upload_match:
-                offset = fn_node.pos[0] + read_match.start()
-                line = line_of(offset, ctx.source)
-                snippet = ctx.source.splitlines()[line - 1].strip() if line else None
-                findings.append(
-                    Finding(
-                        rule_id=self.rule_id,
-                        severity=self.default_severity,
-                        message=(
-                            f"'{fn_name}()' reads {self.what} and also makes an outbound "
-                            f"network upload -- looks like credential exfiltration."
-                        ),
-                        file=ctx.file,
-                        line=line,
-                        snippet=snippet,
-                        incident_ref=self.incident_refs[0] if self.incident_refs else None,
-                        remediation=f"A package has no legitimate reason to read {self.what} and phone home.",
-                    )
-                )
+            findings.extend(self._scan(ctx, describe_scope(fn_name), body_text, fn_node.pos[0]))
+
+        if ctx.module_scope is not None:
+            # module_scope_source has every function body masked out, so this only
+            # matches genuinely top-level code -- PKGBUILD/.install top-level
+            # statements run immediately when the file is sourced, so they're not
+            # somehow safer than code inside build()/package().
+            findings.extend(
+                self._scan(ctx, describe_scope("<module scope>"), ctx.module_scope_source, 0)
+            )
         return findings
 
 

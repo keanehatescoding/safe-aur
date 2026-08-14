@@ -5,6 +5,7 @@ from .exfiltration import (
     EXF004EnvironmentExfiltration,
 )
 from .integrity import INT005InstallHookPullsUnpinnedDeps
+from .meta import META001UnparseableInput
 from .obfuscation import (
     OBF001Base64DecodeExec,
     OBF002EvalUsage,
@@ -50,4 +51,5 @@ ALL_RULES = [
     EXF003BrowserCredentialExfiltration,
     EXF004EnvironmentExfiltration,
     INT005InstallHookPullsUnpinnedDeps,
+    META001UnparseableInput,
 ]

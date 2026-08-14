@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Iterable
 
 from ..model import Finding, RuleContext, Severity
@@ -9,6 +10,10 @@ from .base import Rule
 _PACKAGE_MANAGERS = {"npm", "pip", "pip3", "go", "bun", "yarn", "pnpm"}
 _INSTALL_VERBS = {"install", "add", "get"}
 _INSTALL_HOOKS = ("post_install", "post_upgrade")
+
+# pip's `==1.2.3`, npm/go's `@1.2.3` or `@v1.2.3` -- deliberately excludes npm/go
+# "pins" like `@latest`/`@next` that aren't actually pinned to a fixed version.
+_VERSION_PIN_RE = re.compile(r"(==\S|@=?v?\d)")
 
 
 class INT005InstallHookPullsUnpinnedDeps(Rule):
@@ -39,16 +44,24 @@ class INT005InstallHookPullsUnpinnedDeps(Rule):
                 words = command_words(node)
                 if len(words) < 2 or words[1] not in _INSTALL_VERBS:
                     continue
+
+                specs = [w for w in words[2:] if not w.startswith("-")]
+                all_pinned = bool(specs) and all(_VERSION_PIN_RE.search(s) for s in specs)
+
                 line = line_of(node.pos[0], ctx.source)
                 snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+                if all_pinned:
+                    detail = "pins a specific version, but still fetches unaudited third-party code"
+                else:
+                    detail = "pulls additional, unpinned code"
                 findings.append(
                     Finding(
                         rule_id=self.rule_id,
                         severity=self.default_severity,
                         message=(
-                            f"'{fn_name}()' runs '{name} {words[1]}' to pull additional, "
-                            f"unpinned code at install time -- this bypasses AUR review for "
-                            f"whatever that dependency resolves to."
+                            f"'{fn_name}()' runs '{name} {words[1]}' to {detail} at install "
+                            f"time -- this bypasses AUR review for whatever that dependency "
+                            f"resolves to."
                         ),
                         file=ctx.file,
                         line=line,

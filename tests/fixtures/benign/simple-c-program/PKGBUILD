@@ -1,0 +1,26 @@
+pkgname=hello
+pkgver=2.12
+pkgrel=1
+pkgdesc="A program that produces a familiar, friendly greeting"
+arch=('x86_64')
+url="https://www.gnu.org/software/hello/"
+license=('GPL3')
+depends=('glibc')
+source=("https://ftp.gnu.org/gnu/hello/hello-$pkgver.tar.gz")
+sha256sums=('cf04af86dc085268c5f4470fbae49b18afbc221b78096aab842d934a76bad0a')
+
+build() {
+  cd "hello-$pkgver"
+  ./configure --prefix=/usr
+  make
+}
+
+check() {
+  cd "hello-$pkgver"
+  make check
+}
+
+package() {
+  cd "hello-$pkgver"
+  make DESTDIR="$pkgdir" install
+}

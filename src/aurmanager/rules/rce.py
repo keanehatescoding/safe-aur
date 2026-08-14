@@ -1,14 +1,46 @@
 from __future__ import annotations
 
+import re
 from typing import Iterable
 
 from ..model import Finding, RuleContext, Severity
-from ..parser.bash_ast import command_name, command_words, line_of, walk
+from ..parser.bash_ast import command_name, command_words, describe_scope, iter_scopes, line_of, walk
 from .base import Rule
 
 _DOWNLOADERS = {"curl", "wget"}
 _INTERPRETERS = {"bash", "sh", "zsh", "dash", "python", "python3", "perl", "source", "."}
 _PATCH_LIKE = (".patch", ".diff")
+
+# Matches a short-option cluster ending in -o/-O (e.g. curl's -fsSLo, wget's -qO),
+# optionally with the output path attached directly (e.g. wget's -O-, -O/path).
+_BUNDLED_OUTPUT_FLAG_RE = re.compile(r"^-[a-zA-Z]*([oO])(.*)$")
+
+
+def _normalize_path(p: str) -> str:
+    return p[2:] if p.startswith("./") else p
+
+
+def _download_output_targets(words: list[str]) -> list[str]:
+    """Every path a curl/wget invocation's -o/-O/--output (including bundled short
+    flags like -fsSLo, and attached forms like -O-) writes its output to."""
+    targets: list[str] = []
+    i = 0
+    while i < len(words):
+        w = words[i]
+        if w in ("-o", "-O", "--output"):
+            if i + 1 < len(words):
+                targets.append(words[i + 1])
+            i += 2
+            continue
+        m = _BUNDLED_OUTPUT_FLAG_RE.match(w)
+        if m and w not in ("-o", "-O"):
+            attached = m.group(2)
+            if attached:
+                targets.append(attached)
+            elif i + 1 < len(words):
+                targets.append(words[i + 1])
+        i += 1
+    return targets
 
 
 def _finding_at(rule: Rule, ctx: RuleContext, offset: int, message: str, remediation: str) -> Finding:
@@ -40,7 +72,7 @@ class RCE001CurlPipeBash(Rule):
 
     def check(self, ctx: RuleContext) -> Iterable[Finding]:
         findings: list[Finding] = []
-        for fn_name, fn_node in ctx.functions.items():
+        for fn_name, fn_node in iter_scopes(ctx):
             for node in walk(fn_node):
                 if getattr(node, "kind", None) != "pipeline":
                     continue
@@ -56,9 +88,9 @@ class RCE001CurlPipeBash(Rule):
                             ctx,
                             node.pos[0],
                             message=(
-                                f"'{fn_name}()' pipes the output of '{first_name}' directly "
-                                f"into '{last_name}', executing remote content without any "
-                                f"integrity check or human review."
+                                f"{describe_scope(fn_name)} pipes the output of '{first_name}' "
+                                f"directly into '{last_name}', executing remote content without "
+                                f"any integrity check or human review."
                             ),
                             remediation=(
                                 "Never pipe curl/wget output directly into a shell. Download "
@@ -82,7 +114,7 @@ class RCE002ProcessSubstitutionSource(Rule):
 
     def check(self, ctx: RuleContext) -> Iterable[Finding]:
         findings: list[Finding] = []
-        for fn_name, fn_node in ctx.functions.items():
+        for fn_name, fn_node in iter_scopes(ctx):
             for node in walk(fn_node):
                 if getattr(node, "kind", None) != "command":
                     continue
@@ -100,9 +132,9 @@ class RCE002ProcessSubstitutionSource(Rule):
                                     ctx,
                                     node.pos[0],
                                     message=(
-                                        f"'{fn_name}()' sources a process substitution that runs "
-                                        f"'{command_name(inner)}', executing fetched content "
-                                        f"without any integrity check."
+                                        f"{describe_scope(fn_name)} sources a process "
+                                        f"substitution that runs '{command_name(inner)}', "
+                                        f"executing fetched content without any integrity check."
                                     ),
                                     remediation=(
                                         "Download to a file, verify it, and review its contents "
@@ -124,7 +156,7 @@ class RCE003FetchThenExecute(Rule):
 
     def check(self, ctx: RuleContext) -> Iterable[Finding]:
         findings: list[Finding] = []
-        for fn_name, fn_node in ctx.functions.items():
+        for fn_name, fn_node in iter_scopes(ctx):
             downloaded_paths: dict[str, int] = {}
             commands: list = []
             for node in walk(fn_node):
@@ -135,11 +167,8 @@ class RCE003FetchThenExecute(Rule):
                 words = command_words(cmd)
                 if not words or words[0] not in _DOWNLOADERS:
                     continue
-                for flag in ("-o", "-O", "--output"):
-                    if flag in words:
-                        idx = words.index(flag)
-                        if idx + 1 < len(words):
-                            downloaded_paths[words[idx + 1]] = cmd.pos[0]
+                for target in _download_output_targets(words):
+                    downloaded_paths[_normalize_path(target)] = cmd.pos[0]
 
             if not downloaded_paths:
                 continue
@@ -152,10 +181,10 @@ class RCE003FetchThenExecute(Rule):
                 # chmod +x step alone -- otherwise a single download-then-run chain
                 # produces two redundant findings for the same underlying issue.
                 target = None
-                if words[0] in downloaded_paths:
-                    target = words[0]
-                elif len(words) >= 2 and words[0] in _INTERPRETERS and words[1] in downloaded_paths:
-                    target = words[1]
+                if _normalize_path(words[0]) in downloaded_paths:
+                    target = _normalize_path(words[0])
+                elif len(words) >= 2 and words[0] in _INTERPRETERS and _normalize_path(words[1]) in downloaded_paths:
+                    target = _normalize_path(words[1])
 
                 if target in downloaded_paths:
                     findings.append(
@@ -164,9 +193,9 @@ class RCE003FetchThenExecute(Rule):
                             ctx,
                             cmd.pos[0],
                             message=(
-                                f"'{fn_name}()' downloads a file to '{target}' and then "
-                                f"executes it, running fetched content without any integrity "
-                                f"check or human review."
+                                f"{describe_scope(fn_name)} downloads a file to '{target}' and "
+                                f"then executes it, running fetched content without any "
+                                f"integrity check or human review."
                             ),
                             remediation=(
                                 "Verify the checksum/signature of downloaded files and review "
@@ -207,7 +236,7 @@ class RCE004DisguisedSourceExecuted(Rule):
         if not patch_like_names:
             return findings
 
-        for fn_name, fn_node in ctx.functions.items():
+        for fn_name, fn_node in iter_scopes(ctx):
             for node in walk(fn_node):
                 if getattr(node, "kind", None) != "command":
                     continue
@@ -229,10 +258,10 @@ class RCE004DisguisedSourceExecuted(Rule):
                                 ctx,
                                 node.pos[0],
                                 message=(
-                                    f"'{fn_name}()' executes '{arg}', a source=() entry named "
-                                    f"like a patch/data file, instead of applying it with "
-                                    f"`patch`. This disguise (a fake 'patches' source that is "
-                                    f"actually run) was used to smuggle a RAT into AUR "
+                                    f"{describe_scope(fn_name)} executes '{arg}', a source=() "
+                                    f"entry named like a patch/data file, instead of applying "
+                                    f"it with `patch`. This disguise (a fake 'patches' source "
+                                    f"that is actually run) was used to smuggle a RAT into AUR "
                                     f"packages in 2025."
                                 ),
                                 remediation=(

@@ -21,15 +21,29 @@ def test_per001_fires_on_bashrc_append(make_pkgbuild_ctx):
     assert len(list(PER001ShellRcWrite().check(ctx))) == 1
 
 
-def test_per002_fires_on_crontab_install(make_pkgbuild_ctx):
+def test_per002_fires_on_crontab_install_from_file(make_pkgbuild_ctx):
     ctx = make_pkgbuild_ctx(
         """
         build() {
-          crontab -l
+          crontab /tmp/job.cron
         }
         """
     )
     assert len(list(PER002CronPersistence().check(ctx))) == 1
+
+
+def test_per002_does_not_fire_on_crontab_list_or_remove(make_pkgbuild_ctx):
+    # crontab -l (list) and crontab -r (remove) are read-only/destructive, not
+    # installing anything -- neither should be flagged as persistence.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          crontab -l
+          crontab -r
+        }
+        """
+    )
+    assert list(PER002CronPersistence().check(ctx)) == []
 
 
 def test_per003_fires_on_systemctl_enable(make_pkgbuild_ctx):

@@ -11,7 +11,7 @@ _SHELL_RC_RE = re.compile(
     r"(?:>>|>)\s*['\"]?~?/?(?:\.bashrc|\.bash_profile|\.profile|\.zshrc)\b"
     r"|tee\s+(?:-a\s+)?['\"]?~?/?(?:\.bashrc|\.bash_profile|\.profile|\.zshrc)\b"
 )
-_CRON_RE = re.compile(r"\bcrontab\s+-|/etc/cron\.\w+/|~/\.config/cron\b")
+_CRON_RE = re.compile(r"\bcrontab\s+(?!-[lre]\b)\S+|/etc/cron\.\w+/|~/\.config/cron\b")
 _SYSTEMCTL_RE = re.compile(r"\bsystemctl\s+(?:enable|start|--now)\b")
 _AUTOSTART_RE = re.compile(
     r"(?:>>|>|tee\s+(?:-a\s+)?)\s*['\"]?~?/\.config/autostart/"
@@ -20,10 +20,18 @@ _AUTOSTART_RE = re.compile(
 _AUTHORIZED_KEYS_RE = re.compile(
     r"(?:>>|>|tee\s+(?:-a\s+)?)\s*['\"]?~?/\.ssh/authorized_keys\b"
 )
-_TMP_DISGUISED_BINARY_RE = re.compile(
-    r"(?:cp|mv|curl\s+-o|wget\s+-O)\b[^\n]*/(?:tmp|var/tmp)/"
-    r"(?:systemd-[a-z]+|kworker\S*|\[[a-z0-9_/]+\])",
-    re.IGNORECASE,
+_DISGUISED_NAME = r"(?:systemd-[a-z]+|kworker\S*|\[[a-z0-9_/]+\])"
+# curl -o/wget -O take the disguised path as their very next argument, so tying the
+# match directly to the flag is already direction-correct (it's always the output).
+_TMP_DISGUISED_BINARY_DOWNLOAD_RE = re.compile(
+    rf"(?:curl\s+-o\s+|wget\s+-O\s+)/(?:tmp|var/tmp)/{_DISGUISED_NAME}", re.IGNORECASE
+)
+# cp/mv take SRC then DST -- anchoring to end-of-line targets the destination
+# operand instead of matching a suspicious path regardless of which side it's on
+# (e.g. `mv /tmp/systemd-fake ~/quarantine/` moving a file *away* from /tmp
+# shouldn't be flagged the same as planting one there).
+_TMP_DISGUISED_BINARY_COPY_RE = re.compile(
+    rf"\b(?:cp|mv)\b[^\n]*\s/(?:tmp|var/tmp)/{_DISGUISED_NAME}\s*$", re.IGNORECASE
 )
 
 
@@ -148,10 +156,8 @@ class PER006DisguisedBinaryDrop(Rule):
     incident_refs = ("AUR-2025-chaos-rat", "AUR-2026-atomic-arch")
 
     def check(self, ctx: RuleContext) -> Iterable[Finding]:
-        return _findings_for(
-            self,
-            ctx,
-            _TMP_DISGUISED_BINARY_RE,
-            "Drops a binary into /tmp or /var/tmp under a name disguised to look like a system process.",
-            "Legitimate packages install binaries under $pkgdir, not /tmp, and never under a spoofed system-process name.",
+        message = "Drops a binary into /tmp or /var/tmp under a name disguised to look like a system process."
+        remediation = "Legitimate packages install binaries under $pkgdir, not /tmp, and never under a spoofed system-process name."
+        return _findings_for(self, ctx, _TMP_DISGUISED_BINARY_DOWNLOAD_RE, message, remediation) + _findings_for(
+            self, ctx, _TMP_DISGUISED_BINARY_COPY_RE, message, remediation
         )

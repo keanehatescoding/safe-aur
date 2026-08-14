@@ -59,11 +59,11 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
         result = scan(files, rules=active_rules)
+        severity_min = Severity.from_str(args.severity_min)
 
         if args.json:
-            print(result.to_json())
+            print(result.to_json(severity_min=severity_min))
         else:
-            severity_min = Severity.from_str(args.severity_min)
             print(render_text(result, use_color=not args.no_color and sys.stdout.isatty(), severity_min=severity_min))
 
         threshold = Severity.from_str(args.fail_on)

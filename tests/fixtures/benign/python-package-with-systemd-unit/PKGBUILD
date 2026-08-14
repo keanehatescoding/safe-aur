@@ -1,0 +1,29 @@
+pkgname=example-daemon
+pkgver=1.4.0
+pkgrel=1
+pkgdesc="Example Python daemon packaged with a systemd unit"
+arch=('any')
+url="https://example.invalid/example-daemon"
+license=('MIT')
+depends=('python')
+makedepends=('python-build' 'python-installer' 'python-wheel')
+source=("https://example.invalid/$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  # A legitimate build-time dependency fetch -- this happens during the package's
+  # own build() step, not smuggled into a post_install hook, so it's not the
+  # AUR-review-bypassing pattern INT005 targets.
+  pip install --user build
+  python -m build --wheel --no-isolation
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+  # Shipping a unit file under $pkgdir for the package manager to install is
+  # normal packaging, distinct from enabling/starting it directly (which PER003
+  # targets).
+  install -Dm644 "$pkgname.service" "$pkgdir/usr/lib/systemd/system/$pkgname.service"
+}
