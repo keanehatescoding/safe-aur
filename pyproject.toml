@@ -8,6 +8,10 @@ version = "0.1.0"
 description = "Static malware scanner for AUR PKGBUILDs, grounded in real AUR security incidents"
 readme = "README.md"
 requires-python = ">=3.9"
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+]
 dependencies = [
     "bashlex>=0.18",
 ]
