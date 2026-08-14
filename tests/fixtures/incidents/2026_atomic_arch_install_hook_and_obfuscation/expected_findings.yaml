@@ -1,0 +1,6 @@
+- rule_id: INT005
+  min_severity: HIGH
+  line_contains: "npm install atomic-lockfile-example"
+- rule_id: OBF001
+  min_severity: CRITICAL
+  line_contains: "base64 -d | bash"

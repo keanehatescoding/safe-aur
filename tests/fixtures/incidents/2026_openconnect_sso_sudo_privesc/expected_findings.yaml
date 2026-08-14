@@ -1,0 +1,3 @@
+- rule_id: PRV001
+  min_severity: CRITICAL
+  line_contains: 'sudo "$srcdir/validator" --install'

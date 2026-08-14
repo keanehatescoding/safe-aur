@@ -1,0 +1,6 @@
+- rule_id: RCE004
+  min_severity: HIGH
+  line_contains: "source patches"
+- rule_id: PER006
+  min_severity: HIGH
+  line_contains: "cp patches /tmp/systemd-initd"

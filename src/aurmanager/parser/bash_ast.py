@@ -160,6 +160,11 @@ def walk(node: Any) -> Iterator[Any]:
     lst = getattr(node, "list", None)
     if lst:
         children.extend(lst)
+    # ProcesssubstitutionNode (<(...) / >(...)) holds its inner command here,
+    # not in .parts/.list.
+    command = getattr(node, "command", None)
+    if command is not None:
+        children.append(command)
     for child in children:
         yield from walk(child)
 
@@ -172,6 +177,20 @@ def extract_functions(ast_nodes: list[Any], names: tuple[str, ...]) -> dict[str,
             if fname in names:
                 functions[fname] = node
     return functions
+
+
+def node_text(node: Any, source: str) -> str:
+    """Slice of the original source text spanned by an AST node. Safe to use on any
+    node returned by parse_script() since offsets are preserved 1:1 with the original
+    source (see strip_array_literals)."""
+    start, end = node.pos
+    return source[start:end]
+
+
+def command_words(cmd_node: Any) -> list[str]:
+    """All plain `.word` values on a CommandNode's parts, in order (command name plus
+    its arguments, skipping parts like redirects that don't carry a `.word`)."""
+    return [w for p in getattr(cmd_node, "parts", []) if (w := getattr(p, "word", None)) is not None]
 
 
 def command_name(cmd_node: Any) -> str | None:

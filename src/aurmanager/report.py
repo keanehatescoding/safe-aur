@@ -12,12 +12,13 @@ _COLORS = {
 _RESET = "\033[0m"
 
 
-def render_text(result: ScanResult, use_color: bool = True) -> str:
-    if not result.findings:
-        return "CLEAN: no findings"
+def render_text(result: ScanResult, use_color: bool = True, severity_min: Severity = Severity.INFO) -> str:
+    shown = [f for f in result.findings if f.severity >= severity_min]
+    if not shown:
+        return "CLEAN: no findings" if not result.findings else "CLEAN: no findings at or above the display threshold"
 
     lines: list[str] = []
-    for f in sorted(result.findings, key=lambda f: f.severity, reverse=True):
+    for f in sorted(shown, key=lambda f: f.severity, reverse=True):
         color = _COLORS.get(f.severity, "") if use_color else ""
         reset = _RESET if use_color else ""
         loc = f"{f.file}:{f.line}" if f.line else str(f.file)
@@ -29,5 +30,8 @@ def render_text(result: ScanResult, use_color: bool = True) -> str:
             lines.append(f"    Incident: {f.incident_ref}")
         lines.append("")
 
-    lines.append(f"Overall verdict: {result.overall_verdict.name} ({len(result.findings)} finding(s))")
+    suffix = f", {len(shown)} shown" if len(shown) != len(result.findings) else ""
+    lines.append(
+        f"Overall verdict: {result.overall_verdict.name} ({len(result.findings)} finding(s){suffix})"
+    )
     return "\n".join(lines)

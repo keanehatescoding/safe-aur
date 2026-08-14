@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import re
+from typing import Iterable
+
+from ..model import Finding, RuleContext, Severity
+from ..parser.bash_ast import line_of, walk
+from .base import Rule
+
+_NETWORK_UPLOAD_RE = re.compile(
+    r"\bcurl\b[^\n]*(?:-d\b|--data|-F\b|--form|-T\b|--upload-file)"
+    r"|\bwget\b[^\n]*--post-(?:data|file)"
+    r"|\b(?:nc|ncat|netcat)\b"
+)
+
+_SSH_READ_RE = re.compile(r"\b(?:cat|cp|tar|find|scp|rsync)\b[^\n]*~?/?\.ssh\b")
+_GNUPG_READ_RE = re.compile(r"\b(?:cat|cp|tar|find|scp|rsync)\b[^\n]*~?/?\.gnupg\b")
+_BROWSER_STORE_RE = re.compile(
+    r"\b(?:cat|cp|tar|find|scp|rsync)\b[^\n]*"
+    r"(?:\.mozilla/[^\s]*(?:cookies\.sqlite|logins\.json|key4\.db)"
+    r"|\.config/google-chrome/[^\s]*(?:Login Data|Cookies)"
+    r"|\.config/(?:chromium|BraveSoftware)/[^\s]*(?:Login Data|Cookies))"
+)
+_ENV_DUMP_RE = re.compile(r"\b(?:env|printenv|export\s+-p)\b")
+
+
+class _ReadThenUploadRule(Rule):
+    read_pattern: re.Pattern
+    what: str
+
+    def check(self, ctx: RuleContext) -> Iterable[Finding]:
+        findings: list[Finding] = []
+        for fn_name, fn_node in ctx.functions.items():
+            body_text = ctx.source[fn_node.pos[0] : fn_node.pos[1]]
+            read_match = self.read_pattern.search(body_text)
+            upload_match = _NETWORK_UPLOAD_RE.search(body_text)
+            if read_match and upload_match:
+                offset = fn_node.pos[0] + read_match.start()
+                line = line_of(offset, ctx.source)
+                snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+                findings.append(
+                    Finding(
+                        rule_id=self.rule_id,
+                        severity=self.default_severity,
+                        message=(
+                            f"'{fn_name}()' reads {self.what} and also makes an outbound "
+                            f"network upload -- looks like credential exfiltration."
+                        ),
+                        file=ctx.file,
+                        line=line,
+                        snippet=snippet,
+                        incident_ref=self.incident_refs[0] if self.incident_refs else None,
+                        remediation=f"A package has no legitimate reason to read {self.what} and phone home.",
+                    )
+                )
+        return findings
+
+
+class EXF001SshKeyExfiltration(_ReadThenUploadRule):
+    """Reading ~/.ssh/ and making a network call in the same function is the classic
+    SSH-key-theft shape -- the mechanism the 2026 Atomic Arch infostealer used to
+    steal SSH credentials for lateral movement."""
+
+    rule_id = "EXF001"
+    category = "exfiltration"
+    default_severity = Severity.CRITICAL
+    incident_refs = ("AUR-2026-atomic-arch",)
+    read_pattern = _SSH_READ_RE
+    what = "~/.ssh/"
+
+
+class EXF002GnupgExfiltration(_ReadThenUploadRule):
+    """Same shape as EXF001, targeting GPG keys instead of SSH keys."""
+
+    rule_id = "EXF002"
+    category = "exfiltration"
+    default_severity = Severity.CRITICAL
+    read_pattern = _GNUPG_READ_RE
+    what = "~/.gnupg/"
+
+
+class EXF003BrowserCredentialExfiltration(_ReadThenUploadRule):
+    """Same shape again, targeting browser cookie/login-credential stores -- also
+    part of the 2026 Atomic Arch infostealer's credential-harvesting behavior."""
+
+    rule_id = "EXF003"
+    category = "exfiltration"
+    default_severity = Severity.CRITICAL
+    incident_refs = ("AUR-2026-atomic-arch",)
+    read_pattern = _BROWSER_STORE_RE
+    what = "a browser's cookie/login-credential store"
+
+
+class EXF004EnvironmentExfiltration(_ReadThenUploadRule):
+    """Dumping the environment (which commonly holds API tokens/secrets in CI-like
+    build contexts) and then uploading it is a lower-confidence but still worth
+    flagging exfiltration shape."""
+
+    rule_id = "EXF004"
+    category = "exfiltration"
+    default_severity = Severity.HIGH
+    read_pattern = _ENV_DUMP_RE
+    what = "the process environment"
