@@ -8,7 +8,7 @@ license=('MIT')
 depends=('python')
 makedepends=('python-build' 'python-installer' 'python-wheel')
 source=("https://example.invalid/$pkgname-$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('a94a8fe5ccb19ba61c4c0873d391e987982fbbd3b144e0e5f7b3f0f5a3c8c1e')
 
 build() {
   cd "$pkgname-$pkgver"

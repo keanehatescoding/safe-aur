@@ -4,7 +4,12 @@ from .exfiltration import (
     EXF003BrowserCredentialExfiltration,
     EXF004EnvironmentExfiltration,
 )
-from .integrity import INT005InstallHookPullsUnpinnedDeps
+from .integrity import (
+    INT001PkgverNetworkCall,
+    INT002SuspiciousSourceHost,
+    INT003SkippedChecksumOnNetworkSource,
+    INT005InstallHookPullsUnpinnedDeps,
+)
 from .meta import META001UnparseableInput
 from .obfuscation import (
     OBF001Base64DecodeExec,
@@ -50,6 +55,9 @@ ALL_RULES = [
     EXF002GnupgExfiltration,
     EXF003BrowserCredentialExfiltration,
     EXF004EnvironmentExfiltration,
+    INT001PkgverNetworkCall,
+    INT002SuspiciousSourceHost,
+    INT003SkippedChecksumOnNetworkSource,
     INT005InstallHookPullsUnpinnedDeps,
     META001UnparseableInput,
 ]
