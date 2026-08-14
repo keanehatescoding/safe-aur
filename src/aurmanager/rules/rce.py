@@ -1,46 +1,26 @@
 from __future__ import annotations
 
-import re
 from typing import Iterable
 
 from ..model import Finding, RuleContext, Severity
-from ..parser.bash_ast import command_name, command_words, describe_scope, iter_scopes, line_of, walk
+from ..parser.bash_ast import (
+    DOWNLOADERS,
+    command_name,
+    command_words,
+    describe_scope,
+    download_output_targets,
+    iter_scopes,
+    line_of,
+    normalize_path,
+    walk,
+)
 from .base import Rule
 
-_DOWNLOADERS = {"curl", "wget"}
+_DOWNLOADERS = DOWNLOADERS
 _INTERPRETERS = {"bash", "sh", "zsh", "dash", "python", "python3", "perl", "source", "."}
 _PATCH_LIKE = (".patch", ".diff")
-
-# Matches a short-option cluster ending in -o/-O (e.g. curl's -fsSLo, wget's -qO),
-# optionally with the output path attached directly (e.g. wget's -O-, -O/path).
-_BUNDLED_OUTPUT_FLAG_RE = re.compile(r"^-[a-zA-Z]*([oO])(.*)$")
-
-
-def _normalize_path(p: str) -> str:
-    return p[2:] if p.startswith("./") else p
-
-
-def _download_output_targets(words: list[str]) -> list[str]:
-    """Every path a curl/wget invocation's -o/-O/--output (including bundled short
-    flags like -fsSLo, and attached forms like -O-) writes its output to."""
-    targets: list[str] = []
-    i = 0
-    while i < len(words):
-        w = words[i]
-        if w in ("-o", "-O", "--output"):
-            if i + 1 < len(words):
-                targets.append(words[i + 1])
-            i += 2
-            continue
-        m = _BUNDLED_OUTPUT_FLAG_RE.match(w)
-        if m and w not in ("-o", "-O"):
-            attached = m.group(2)
-            if attached:
-                targets.append(attached)
-            elif i + 1 < len(words):
-                targets.append(words[i + 1])
-        i += 1
-    return targets
+_normalize_path = normalize_path
+_download_output_targets = download_output_targets
 
 
 def _finding_at(rule: Rule, ctx: RuleContext, offset: int, message: str, remediation: str) -> Finding:

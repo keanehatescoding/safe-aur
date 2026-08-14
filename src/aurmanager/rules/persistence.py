@@ -4,6 +4,15 @@ import re
 from typing import Iterable
 
 from ..model import Finding, RuleContext, Severity
+from ..parser.bash_ast import (
+    DOWNLOADERS,
+    command_words,
+    describe_scope,
+    download_output_targets,
+    iter_scopes,
+    line_of,
+    walk,
+)
 from ..regex_fallback import find_line_matches
 from .base import Rule
 
@@ -11,7 +20,7 @@ _SHELL_RC_RE = re.compile(
     r"(?:>>|>)\s*['\"]?~?/?(?:\.bashrc|\.bash_profile|\.profile|\.zshrc)\b"
     r"|tee\s+(?:-a\s+)?['\"]?~?/?(?:\.bashrc|\.bash_profile|\.profile|\.zshrc)\b"
 )
-_CRON_RE = re.compile(r"\bcrontab\s+(?!-[lre]\b)\S+|/etc/cron\.\w+/|~/\.config/cron\b")
+_CRON_RE = re.compile(r"\bcrontab\s+(?!-[lr]\b)\S+|/etc/cron\.\w+/|~/\.config/cron\b")
 _SYSTEMCTL_RE = re.compile(r"\bsystemctl\s+(?:enable|start|--now)\b")
 _AUTOSTART_RE = re.compile(
     r"(?:>>|>|tee\s+(?:-a\s+)?)\s*['\"]?~?/\.config/autostart/"
@@ -20,19 +29,22 @@ _AUTOSTART_RE = re.compile(
 _AUTHORIZED_KEYS_RE = re.compile(
     r"(?:>>|>|tee\s+(?:-a\s+)?)\s*['\"]?~?/\.ssh/authorized_keys\b"
 )
-_DISGUISED_NAME = r"(?:systemd-[a-z]+|kworker\S*|\[[a-z0-9_/]+\])"
-# curl -o/wget -O take the disguised path as their very next argument, so tying the
-# match directly to the flag is already direction-correct (it's always the output).
-_TMP_DISGUISED_BINARY_DOWNLOAD_RE = re.compile(
-    rf"(?:curl\s+-o\s+|wget\s+-O\s+)/(?:tmp|var/tmp)/{_DISGUISED_NAME}", re.IGNORECASE
+# Real kernel-thread names routinely include an internal slash (per-CPU instances
+# like kworker/0:3, [kworker/u8:1]) -- so a plain rsplit("/")-based "basename"
+# extraction would chop the name at the wrong point. Instead, match the disguised
+# name anchored to the end of the path, preceded by either the start of the
+# remainder or a directory separator; this handles both bare and bracketed forms,
+# and arbitrary subdirectories under /tmp, without needing to isolate a basename.
+_TMP_ROOT_RE = re.compile(r"^/(?:tmp|var/tmp)/")
+_DISGUISED_NAME_RE = re.compile(
+    r"(?:^|/)(?:systemd-[a-z]+|kworker(?:/\S*)?|\[[a-z0-9_:/]+\])$", re.IGNORECASE
 )
-# cp/mv take SRC then DST -- anchoring to end-of-line targets the destination
-# operand instead of matching a suspicious path regardless of which side it's on
-# (e.g. `mv /tmp/systemd-fake ~/quarantine/` moving a file *away* from /tmp
-# shouldn't be flagged the same as planting one there).
-_TMP_DISGUISED_BINARY_COPY_RE = re.compile(
-    rf"\b(?:cp|mv)\b[^\n]*\s/(?:tmp|var/tmp)/{_DISGUISED_NAME}\s*$", re.IGNORECASE
-)
+
+
+def _disguised_tmp_target(path: str) -> bool:
+    if not _TMP_ROOT_RE.match(path):
+        return False
+    return bool(_DISGUISED_NAME_RE.search(path))
 
 
 def _findings_for(rule: Rule, ctx: RuleContext, pattern, message: str, remediation: str) -> list[Finding]:
@@ -156,8 +168,45 @@ class PER006DisguisedBinaryDrop(Rule):
     incident_refs = ("AUR-2025-chaos-rat", "AUR-2026-atomic-arch")
 
     def check(self, ctx: RuleContext) -> Iterable[Finding]:
-        message = "Drops a binary into /tmp or /var/tmp under a name disguised to look like a system process."
-        remediation = "Legitimate packages install binaries under $pkgdir, not /tmp, and never under a spoofed system-process name."
-        return _findings_for(self, ctx, _TMP_DISGUISED_BINARY_DOWNLOAD_RE, message, remediation) + _findings_for(
-            self, ctx, _TMP_DISGUISED_BINARY_COPY_RE, message, remediation
-        )
+        findings: list[Finding] = []
+        for fn_name, fn_node in iter_scopes(ctx):
+            for node in walk(fn_node):
+                if getattr(node, "kind", None) != "command":
+                    continue
+                words = command_words(node)
+                if not words:
+                    continue
+                name = words[0]
+                if name in DOWNLOADERS:
+                    targets = download_output_targets(words)
+                elif name in ("cp", "mv"):
+                    # destination is the last non-flag argument
+                    args = [w for w in words[1:] if not w.startswith("-")]
+                    targets = [args[-1]] if args else []
+                else:
+                    continue
+
+                for target in targets:
+                    if not _disguised_tmp_target(target):
+                        continue
+                    line = line_of(node.pos[0], ctx.source)
+                    snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+                    findings.append(
+                        Finding(
+                            rule_id=self.rule_id,
+                            severity=self.default_severity,
+                            message=(
+                                f"{describe_scope(fn_name)} drops a binary at '{target}', a "
+                                f"name disguised to look like a system process."
+                            ),
+                            file=ctx.file,
+                            line=line,
+                            snippet=snippet,
+                            incident_ref=self.incident_refs[0],
+                            remediation=(
+                                "Legitimate packages install binaries under $pkgdir, not /tmp, "
+                                "and never under a spoofed system-process name."
+                            ),
+                        )
+                    )
+        return findings

@@ -160,3 +160,20 @@ def test_int005_message_reflects_pinned_version(make_install_ctx):
     assert len(findings) == 1
     assert "unpinned" not in findings[0].message
     assert "pins a specific version" in findings[0].message
+
+
+def test_int005_flag_value_not_mistaken_for_unpinned_package(make_install_ctx):
+    # --index-url's URL argument must not be treated as a package spec -- otherwise
+    # a genuinely pinned install (requests==2.31.0) gets misreported as "unpinned"
+    # because the URL doesn't match the version-pin pattern.
+    ctx = make_install_ctx(
+        """
+        post_install() {
+          pip install --index-url https://pypi.org/simple requests==2.31.0
+        }
+        """
+    )
+    findings = list(INT005InstallHookPullsUnpinnedDeps().check(ctx))
+    assert len(findings) == 1
+    assert "unpinned" not in findings[0].message
+    assert "pins a specific version" in findings[0].message

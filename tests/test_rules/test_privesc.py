@@ -41,11 +41,45 @@ def test_prv002_fires_on_sudoers_edit(make_pkgbuild_ctx):
     assert len(list(PRV002SudoersEdit().check(ctx))) == 1
 
 
+def test_prv002_fires_on_bare_visudo(make_pkgbuild_ctx):
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          visudo
+        }
+        """
+    )
+    assert len(list(PRV002SudoersEdit().check(ctx))) == 1
+
+
+def test_prv002_does_not_fire_on_visudo_check_modes(make_pkgbuild_ctx):
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          visudo -c
+          visudo --check
+        }
+        """
+    )
+    assert list(PRV002SudoersEdit().check(ctx)) == []
+
+
 def test_prv003_fires_on_setuid_chmod(make_pkgbuild_ctx):
     ctx = make_pkgbuild_ctx(
         """
         package() {
           chmod u+s "$pkgdir/usr/bin/foo"
+        }
+        """
+    )
+    assert len(list(PRV003SetuidBit().check(ctx))) == 1
+
+
+def test_prv003_fires_on_chmod_with_long_option(make_pkgbuild_ctx):
+    ctx = make_pkgbuild_ctx(
+        """
+        package() {
+          chmod --recursive u+s "$pkgdir/usr/bin/"
         }
         """
     )

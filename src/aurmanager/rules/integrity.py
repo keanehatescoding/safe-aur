@@ -15,6 +15,26 @@ _INSTALL_HOOKS = ("post_install", "post_upgrade")
 # "pins" like `@latest`/`@next` that aren't actually pinned to a fixed version.
 _VERSION_PIN_RE = re.compile(r"(==\S|@=?v?\d)")
 
+# Options that take a following value -- that value must not be mistaken for a
+# package spec when checking whether every installed package is version-pinned.
+_FLAGS_WITH_VALUE = {
+    "--registry", "--tag", "--prefix",  # npm
+    "--index-url", "--extra-index-url", "--find-links", "--target", "-i", "-f", "-t",  # pip
+}
+
+
+def _package_specs(words: list[str]) -> list[str]:
+    specs = []
+    i = 0
+    while i < len(words):
+        w = words[i]
+        if w.startswith("-"):
+            i += 2 if w in _FLAGS_WITH_VALUE else 1
+            continue
+        specs.append(w)
+        i += 1
+    return specs
+
 _NETWORK_COMMANDS = {"curl", "wget"}
 _GIT_NETWORK_SUBCOMMANDS = {"ls-remote", "fetch", "pull", "clone"}
 
@@ -207,7 +227,7 @@ class INT005InstallHookPullsUnpinnedDeps(Rule):
                 if len(words) < 2 or words[1] not in _INSTALL_VERBS:
                     continue
 
-                specs = [w for w in words[2:] if not w.startswith("-")]
+                specs = _package_specs(words[2:])
                 all_pinned = bool(specs) and all(_VERSION_PIN_RE.search(s) for s in specs)
 
                 line = line_of(node.pos[0], ctx.source)

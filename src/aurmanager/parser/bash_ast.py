@@ -266,6 +266,40 @@ def command_words(cmd_node: Any) -> list[str]:
     return [w for p in getattr(cmd_node, "parts", []) if (w := getattr(p, "word", None)) is not None]
 
 
+DOWNLOADERS = {"curl", "wget"}
+
+# Matches a short-option cluster ending in -o/-O (e.g. curl's -fsSLo, wget's -qO),
+# optionally with the output path attached directly (e.g. wget's -O-, -O/path).
+_BUNDLED_OUTPUT_FLAG_RE = re.compile(r"^-[a-zA-Z]*([oO])(.*)$")
+
+
+def normalize_path(p: str) -> str:
+    return p[2:] if p.startswith("./") else p
+
+
+def download_output_targets(words: list[str]) -> list[str]:
+    """Every path a curl/wget invocation's -o/-O/--output (including bundled short
+    flags like -fsSLo, and attached forms like -O-) writes its output to."""
+    targets: list[str] = []
+    i = 0
+    while i < len(words):
+        w = words[i]
+        if w in ("-o", "-O", "--output"):
+            if i + 1 < len(words):
+                targets.append(words[i + 1])
+            i += 2
+            continue
+        m = _BUNDLED_OUTPUT_FLAG_RE.match(w)
+        if m and w not in ("-o", "-O"):
+            attached = m.group(2)
+            if attached:
+                targets.append(attached)
+            elif i + 1 < len(words):
+                targets.append(words[i + 1])
+        i += 1
+    return targets
+
+
 def command_name(cmd_node: Any) -> str | None:
     """Best-effort command name of a bashlex CommandNode: the first part that carries
     a plain `.word` (skips redirects etc.)."""

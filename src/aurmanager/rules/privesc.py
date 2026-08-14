@@ -12,11 +12,11 @@ _ELEVATION_COMMANDS = {"sudo", "doas", "pkexec"}
 _BUILD_LIFECYCLE_FUNCTIONS = ("prepare", "build", "check", "package", "pkgver")
 
 _SUDOERS_WRITE_RE = re.compile(r"(?:>>|>|tee\s+(?:-a\s+)?)\s*['\"]?/etc/sudoers(?:\.d/\S+)?\b")
-# visudo -c only validates the syntax of the sudoers file and makes no changes;
-# only unflagged/modifying invocations are worth reporting.
-_VISUDO_MODIFYING_RE = re.compile(r"\bvisudo\b(?![^\n]*\s-c\b)")
+# visudo -c/--check only validates the syntax of the sudoers file and makes no
+# changes; only unflagged/modifying invocations are worth reporting.
+_VISUDO_MODIFYING_RE = re.compile(r"\bvisudo\b(?![^\n]*\s(?:-c|--check)\b)")
 _SETUID_CHMOD_RE = re.compile(
-    r"\bchmod\s+(?:-[a-zA-Z]+\s+)*(?:[ugoa]*\+s\b|0?[2-7][0-7]{3}\b)"
+    r"\bchmod\s+(?:-{1,2}[a-zA-Z-]+\s+)*(?:[ugoa]*\+s\b|0?[2-7][0-7]{3}\b)"
 )
 
 
