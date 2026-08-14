@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aur-manager"
+version = "0.1.0"
+description = "Static malware scanner for AUR PKGBUILDs, grounded in real AUR security incidents"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "bashlex>=0.18",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+aur-manager = "aurmanager.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/aurmanager"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
