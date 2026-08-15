@@ -306,6 +306,8 @@ def download_output_targets(tool: str, words: list[str]) -> list[str]:
     n = len(words)
     while i < n:
         w = words[i]
+        if w == "--":
+            break
         if w in value_flags:
             if i + 1 < n:
                 targets.append(words[i + 1])

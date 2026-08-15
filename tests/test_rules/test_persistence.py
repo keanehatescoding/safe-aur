@@ -173,3 +173,17 @@ def test_per006_fires_on_wget_output_document_flag(make_pkgbuild_ctx):
         """
     )
     assert len(list(PER006DisguisedBinaryDrop().check(ctx))) == 1
+
+
+def test_per006_does_not_fire_on_positional_arg_after_terminator(make_pkgbuild_ctx):
+    # After `--`, curl treats every remaining word as positional, not an option --
+    # so `-o /tmp/systemd-initd` here is a URL-like positional argument, not the
+    # output flag. Must not be misread as a content-download target.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          curl -- -o /tmp/systemd-initd
+        }
+        """
+    )
+    assert list(PER006DisguisedBinaryDrop().check(ctx)) == []
