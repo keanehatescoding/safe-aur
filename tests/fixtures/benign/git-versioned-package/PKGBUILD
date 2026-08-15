@@ -1,0 +1,29 @@
+pkgname=example-tool-git
+pkgver=1.2.0.r14.gabc1234
+pkgrel=1
+pkgdesc="Example VCS package that derives its version from git"
+arch=('x86_64')
+url="https://example.invalid/example-tool"
+license=('MIT')
+depends=('glibc')
+makedepends=('git')
+provides=('example-tool')
+conflicts=('example-tool')
+source=("$pkgname::git+https://example.invalid/example-tool.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$pkgname"
+  git describe --long --tags 2>/dev/null | sed 's/\([^-]*-g\)/r\1/;s/-/./g' \
+    || printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd "$pkgname"
+  make
+}
+
+package() {
+  cd "$pkgname"
+  make DESTDIR="$pkgdir" PREFIX=/usr install
+}

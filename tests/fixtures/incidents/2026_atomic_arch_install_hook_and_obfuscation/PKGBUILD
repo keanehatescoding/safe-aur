@@ -1,0 +1,25 @@
+# Synthetic reconstruction of the 2026 "Atomic Arch" AUR campaign technique.
+# See SOURCE.md -- this is NOT the original malicious code. The PKGBUILD itself is
+# an otherwise-ordinary package; the malicious behavior lives in package.install,
+# matching how the real campaign worked (orphaned packages with clean PKGBUILDs but
+# tampered .install hooks).
+pkgname=atomic-arch-example
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Example reconstruction of an Atomic-Arch-style compromised AUR package"
+arch=('x86_64')
+url="https://example.invalid/atomic-arch-example"
+license=('MIT')
+source=("https://example.invalid/$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+install=atomic-arch-example.install
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  make
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+  make DESTDIR="$pkgdir" install
+}
