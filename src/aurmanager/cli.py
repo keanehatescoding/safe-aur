@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
 def _select_rules(include_csv: str | None, exclude_csv: str | None):
     known = {rule_cls.rule_id: rule_cls for rule_cls in ALL_RULES}
 
-    if include_csv:
+    if include_csv is not None:
         ids = [r.strip() for r in include_csv.split(",") if r.strip()]
         if not ids or not all(i in known for i in ids):
             return None

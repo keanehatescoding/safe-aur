@@ -147,7 +147,12 @@ class RCE003FetchThenExecute(Rule):
                 if not words or words[0] not in _DOWNLOADERS:
                     continue
                 for target in _download_output_targets(words[0], words):
-                    downloaded_paths[_normalize_path(target)] = cmd.pos[0]
+                    # Keep the *earliest* download position for a given path, not
+                    # the latest -- otherwise a download-execute-redownload chain
+                    # to the same path would have the execution's later comparison
+                    # made against the redownload instead of the download that
+                    # actually preceded it, wrongly clearing a real finding.
+                    downloaded_paths.setdefault(_normalize_path(target), cmd.pos[0])
 
             if not downloaded_paths:
                 continue

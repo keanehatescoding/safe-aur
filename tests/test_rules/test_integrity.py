@@ -155,6 +155,22 @@ def test_int003_checks_every_source_even_when_first_array_is_shorter(make_pkgbui
     assert "b.tar.gz" in findings[0].message
 
 
+def test_int003_fires_when_no_checksum_array_covers_a_source(make_pkgbuild_ctx):
+    # Regression: a network source with no checksum entry at all (every declared
+    # array is too short to reach its index) used to be silently skipped -- it's
+    # just as unprotected as an explicit SKIP, so it must fire too.
+    ctx = make_pkgbuild_ctx(
+        """
+        pkgname=foo
+        source=("https://example.com/a.tar.gz" "https://example.com/b.tar.gz")
+        sha256sums=('deadbeef')
+        """
+    )
+    findings = list(INT003SkippedChecksumOnNetworkSource().check(ctx))
+    assert len(findings) == 1
+    assert "b.tar.gz" in findings[0].message
+
+
 def test_int003_fires_on_skip_for_sha1sums(make_pkgbuild_ctx):
     # Regression: CHECKSUM_KEYS only recognized sha256sums/sha512sums/b2sums/
     # md5sums, so a PKGBUILD using only sha1sums (also fully supported by

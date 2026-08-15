@@ -22,3 +22,10 @@ def test_select_rules_rejects_empty_after_stripping():
     # zero rules instead of erroring -- a full scanner bypass via the CLI.
     assert _select_rules(",", None) is None
     assert _select_rules(" , ,", None) is None
+
+
+def test_select_rules_rejects_explicit_empty_string():
+    # Regression: an explicit --rules "" is distinct from omitting --rules
+    # entirely (None) -- it used to be treated the same as omitted and silently
+    # default to ALL_RULES instead of being rejected as invalid input.
+    assert _select_rules("", None) is None

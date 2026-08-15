@@ -191,14 +191,23 @@ class INT003SkippedChecksumOnNetworkSource(Rule):
             entries = [
                 checksum_list[idx] for checksum_list in ctx.checksums.values() if idx < len(checksum_list)
             ]
-            if not entries or not all(e.strip().upper() == "SKIP" for e in entries):
+            # Protected only if at least one declared array actually has a real
+            # (non-SKIP) entry at this index. No entries at all (every declared
+            # array is too short to cover this source) is just as unprotected as
+            # every entry being SKIP -- makepkg builds from an unverified download
+            # either way.
+            if entries and any(e.strip().upper() != "SKIP" for e in entries):
                 continue
+            if entries:
+                reason = "Checksum is SKIP for a network source"
+            else:
+                reason = "No checksum entry covers this network source"
             line, snippet = _line_for_source_entry(ctx, src)
             findings.append(
                 Finding(
                     rule_id=self.rule_id,
                     severity=self.default_severity,
-                    message=f"Checksum is SKIP for a network source ({src}) -- makepkg will build from a tampered download with no integrity check.",
+                    message=f"{reason} ({src}) -- makepkg will build from a tampered download with no integrity check.",
                     file=ctx.file,
                     line=line,
                     snippet=snippet,
