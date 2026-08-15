@@ -147,7 +147,7 @@ class RCE003FetchThenExecute(Rule):
                 words = command_words(cmd)
                 if not words or words[0] not in _DOWNLOADERS:
                     continue
-                for target in _download_output_targets(words):
+                for target in _download_output_targets(words[0], words):
                     downloaded_paths[_normalize_path(target)] = cmd.pos[0]
 
             if not downloaded_paths:

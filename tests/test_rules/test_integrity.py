@@ -75,6 +75,19 @@ def test_int002_does_not_fire_on_github_release(make_pkgbuild_ctx):
     assert list(INT002SuspiciousSourceHost().check(ctx)) == []
 
 
+def test_int002_fires_on_compound_vcs_scheme_with_raw_ip(make_pkgbuild_ctx):
+    # git+https://, hg+ssh://, etc. are compound schemes (VCS + transport) -- the
+    # scheme pattern must accept the '+' or these sources are silently skipped.
+    ctx = make_pkgbuild_ctx(
+        """
+        pkgname=foo
+        source=("foo::git+http://185.220.101.5/repo.git")
+        sha256sums=('SKIP')
+        """
+    )
+    assert len(list(INT002SuspiciousSourceHost().check(ctx))) == 1
+
+
 def test_int003_fires_on_skip_for_plain_network_tarball(make_pkgbuild_ctx):
     ctx = make_pkgbuild_ctx(
         """

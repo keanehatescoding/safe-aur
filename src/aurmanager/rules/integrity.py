@@ -38,7 +38,9 @@ def _package_specs(words: list[str]) -> list[str]:
 _NETWORK_COMMANDS = {"curl", "wget"}
 _GIT_NETWORK_SUBCOMMANDS = {"ls-remote", "fetch", "pull", "clone"}
 
-_URL_RE = re.compile(r"^(?:[\w+.-]+::)?(\w+)://(?:[^/@\s]+@)?([^/\s]+)")
+# Scheme allows RFC 3986's letter/digit/+/-/. so compound VCS schemes like
+# git+https:// and hg+ssh:// match, not just plain http(s)/ftp.
+_URL_RE = re.compile(r"^(?:[\w+.-]+::)?([a-zA-Z][a-zA-Z0-9+.-]*)://(?:[^/@\s]+@)?([^/\s]+)")
 _IP_LITERAL_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?$")
 _PASTE_HOSTS = {
     "pastebin.com",

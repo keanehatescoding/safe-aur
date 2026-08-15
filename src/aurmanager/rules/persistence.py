@@ -178,7 +178,7 @@ class PER006DisguisedBinaryDrop(Rule):
                     continue
                 name = words[0]
                 if name in DOWNLOADERS:
-                    targets = download_output_targets(words)
+                    targets = download_output_targets(name, words)
                 elif name in ("cp", "mv"):
                     # destination is the last non-flag argument
                     args = [w for w in words[1:] if not w.startswith("-")]

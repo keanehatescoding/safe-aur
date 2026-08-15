@@ -272,30 +272,57 @@ DOWNLOADERS = {"curl", "wget"}
 # optionally with the output path attached directly (e.g. wget's -O-, -O/path).
 _BUNDLED_OUTPUT_FLAG_RE = re.compile(r"^-[a-zA-Z]*([oO])(.*)$")
 
+# curl and wget give -o/-O opposite meanings, so which flags actually name a
+# *content* download target differs per tool:
+#   curl: -o/--output <file> writes content there (takes a value).
+#         -O/--remote-name derives the local filename from the URL itself --
+#         no explicit path to compare against, so it's not tracked as a target.
+#   wget: -O/--output-document <file> writes content there (takes a value).
+#         -o/--output-file <file> is wget's own *log* file, not a content
+#         target -- treating it as one would be a false positive (a package
+#         redirecting wget's log chatter to /tmp/systemd-fake isn't dropping a
+#         disguised binary there).
+_CONTENT_TARGET_FLAGS = {
+    "curl": {"-o", "--output"},
+    "wget": {"-O", "--output-document"},
+}
+_BUNDLED_TARGET_LETTER = {"curl": "o", "wget": "O"}
+
 
 def normalize_path(p: str) -> str:
     return p[2:] if p.startswith("./") else p
 
 
-def download_output_targets(words: list[str]) -> list[str]:
-    """Every path a curl/wget invocation's -o/-O/--output (including bundled short
-    flags like -fsSLo, and attached forms like -O-) writes its output to."""
+def download_output_targets(tool: str, words: list[str]) -> list[str]:
+    """Every path a curl/wget invocation actually writes downloaded *content* to --
+    tool-aware because curl and wget assign opposite meanings to -o/-O (see
+    _CONTENT_TARGET_FLAGS). Handles bundled short flags (curl's -fsSLo), attached
+    forms (wget's -O-), and --flag=value long-option syntax."""
+    value_flags = _CONTENT_TARGET_FLAGS.get(tool, {"-o", "-O", "--output", "--output-document"})
+    bundled_letter = _BUNDLED_TARGET_LETTER.get(tool)
+
     targets: list[str] = []
     i = 0
-    while i < len(words):
+    n = len(words)
+    while i < n:
         w = words[i]
-        if w in ("-o", "-O", "--output"):
-            if i + 1 < len(words):
+        if w in value_flags:
+            if i + 1 < n:
                 targets.append(words[i + 1])
             i += 2
             continue
-        m = _BUNDLED_OUTPUT_FLAG_RE.match(w)
-        if m and w not in ("-o", "-O"):
-            attached = m.group(2)
-            if attached:
-                targets.append(attached)
-            elif i + 1 < len(words):
-                targets.append(words[i + 1])
+        if "=" in w and w.split("=", 1)[0] in value_flags:
+            targets.append(w.split("=", 1)[1])
+            i += 1
+            continue
+        if bundled_letter and w not in ("-o", "-O"):
+            m = _BUNDLED_OUTPUT_FLAG_RE.match(w)
+            if m and m.group(1) == bundled_letter:
+                attached = m.group(2)
+                if attached:
+                    targets.append(attached)
+                elif i + 1 < n:
+                    targets.append(words[i + 1])
         i += 1
     return targets
 
