@@ -10,7 +10,16 @@ _SCALAR_RE = re.compile(
     r'^\s*(pkgname|pkgver|pkgrel|pkgbase)=(["\']?)(.*?)\2\s*$', re.MULTILINE
 )
 
-CHECKSUM_KEYS = ("sha256sums", "sha512sums", "b2sums", "md5sums")
+CHECKSUM_KEYS = (
+    "cksums",
+    "md5sums",
+    "sha1sums",
+    "sha224sums",
+    "sha256sums",
+    "sha384sums",
+    "sha512sums",
+    "b2sums",
+)
 
 
 def parse_pkgbuild(path: Path) -> RuleContext:

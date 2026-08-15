@@ -4,11 +4,14 @@ import re
 from typing import Iterable
 
 from ..model import Finding, RuleContext, Severity
-from ..parser.bash_ast import command_name, command_words, line_of, walk
+from ..parser.bash_ast import command_name, command_words, line_and_snippet, walk
 from .base import Rule
 
-_PACKAGE_MANAGERS = {"npm", "pip", "pip3", "go", "bun", "yarn", "pnpm"}
-_INSTALL_VERBS = {"install", "add", "get"}
+_PACKAGE_MANAGERS = {
+    "npm", "pip", "pip3", "go", "bun", "yarn", "pnpm",
+    "cargo", "gem", "composer", "luarocks",
+}
+_INSTALL_VERBS = {"install", "add", "get", "require"}
 _INSTALL_HOOKS = ("post_install", "post_upgrade")
 
 # pip's `==1.2.3`, npm/go's `@1.2.3` or `@v1.2.3` -- deliberately excludes npm/go
@@ -60,8 +63,7 @@ def _line_for_source_entry(ctx: RuleContext, src: str) -> tuple[int | None, str 
     idx = ctx.source.find(src)
     if idx == -1:
         return None, None
-    line = line_of(idx, ctx.source)
-    return line, ctx.source.splitlines()[line - 1].strip()
+    return line_and_snippet(idx, ctx.source)
 
 
 class INT001PkgverNetworkCall(Rule):
@@ -95,8 +97,7 @@ class INT001PkgverNetworkCall(Rule):
             )
             if not is_network:
                 continue
-            line = line_of(node.pos[0], ctx.source)
-            snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+            line, snippet = line_and_snippet(node.pos[0], ctx.source)
             findings.append(
                 Finding(
                     rule_id=self.rule_id,
@@ -173,24 +174,40 @@ class INT003SkippedChecksumOnNetworkSource(Rule):
     def check(self, ctx: RuleContext) -> Iterable[Finding]:
         if not ctx.checksums or not ctx.sources:
             return []
-        checksum_list = next(iter(ctx.checksums.values()))
         findings: list[Finding] = []
         for idx, src in enumerate(ctx.sources):
-            if idx >= len(checksum_list):
-                break
             url_part = src.split("::", 1)[-1]
             is_local = "://" not in url_part
             is_vcs = bool(re.match(r"^(?:git|svn|hg|bzr)\+", url_part))
             if is_local or is_vcs:
                 continue
-            if checksum_list[idx].strip().upper() != "SKIP":
+            # makepkg verifies every declared checksum array that has an entry at
+            # this index -- a source is only unprotected if ALL of them are SKIP
+            # (or none cover this index at all). Checking just the first-declared
+            # array (e.g. b2sums=('SKIP')) would both false-positive when a later
+            # array (e.g. sha256sums) actually protects the source, and, via a
+            # shared break, silently stop checking every source after the first
+            # array ran out of entries.
+            entries = [
+                checksum_list[idx] for checksum_list in ctx.checksums.values() if idx < len(checksum_list)
+            ]
+            # Protected only if at least one declared array actually has a real
+            # (non-SKIP) entry at this index. No entries at all (every declared
+            # array is too short to cover this source) is just as unprotected as
+            # every entry being SKIP -- makepkg builds from an unverified download
+            # either way.
+            if entries and any(e.strip().upper() != "SKIP" for e in entries):
                 continue
+            if entries:
+                reason = "Checksum is SKIP for a network source"
+            else:
+                reason = "No checksum entry covers this network source"
             line, snippet = _line_for_source_entry(ctx, src)
             findings.append(
                 Finding(
                     rule_id=self.rule_id,
                     severity=self.default_severity,
-                    message=f"Checksum is SKIP for a network source ({src}) -- makepkg will build from a tampered download with no integrity check.",
+                    message=f"{reason} ({src}) -- makepkg will build from a tampered download with no integrity check.",
                     file=ctx.file,
                     line=line,
                     snippet=snippet,
@@ -232,8 +249,7 @@ class INT005InstallHookPullsUnpinnedDeps(Rule):
                 specs = _package_specs(words[2:])
                 all_pinned = bool(specs) and all(_VERSION_PIN_RE.search(s) for s in specs)
 
-                line = line_of(node.pos[0], ctx.source)
-                snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+                line, snippet = line_and_snippet(node.pos[0], ctx.source)
                 if all_pinned:
                     detail = "pins a specific version, but still fetches unaudited third-party code"
                 else:

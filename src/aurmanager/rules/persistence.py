@@ -10,7 +10,7 @@ from ..parser.bash_ast import (
     describe_scope,
     download_output_targets,
     iter_scopes,
-    line_of,
+    line_and_snippet,
     walk,
 )
 from ..regex_fallback import find_line_matches
@@ -37,7 +37,7 @@ _AUTHORIZED_KEYS_RE = re.compile(
 # and arbitrary subdirectories under /tmp, without needing to isolate a basename.
 _TMP_ROOT_RE = re.compile(r"^/(?:tmp|var/tmp)/")
 _DISGUISED_NAME_RE = re.compile(
-    r"(?:^|/)(?:systemd-[a-z]+|kworker(?:/\S*)?|\[[a-z0-9_:/]+\])$", re.IGNORECASE
+    r"(?:^|/)(?:systemd-[a-z]+|kworker(?:/\S*)?|\[[a-z0-9_:/]+\])/?$", re.IGNORECASE
 )
 
 
@@ -189,8 +189,7 @@ class PER006DisguisedBinaryDrop(Rule):
                 for target in targets:
                     if not _disguised_tmp_target(target):
                         continue
-                    line = line_of(node.pos[0], ctx.source)
-                    snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+                    line, snippet = line_and_snippet(node.pos[0], ctx.source)
                     findings.append(
                         Finding(
                             rule_id=self.rule_id,

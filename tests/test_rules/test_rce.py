@@ -73,6 +73,41 @@ def test_rce003_does_not_fire_without_execution(make_pkgbuild_ctx):
     assert list(RCE003FetchThenExecute().check(ctx)) == []
 
 
+def test_rce003_does_not_fire_when_execution_precedes_the_download(make_pkgbuild_ctx):
+    # Regression: RCE003 recorded a download's position but never compared it
+    # against the execution's position -- only path membership was checked. An
+    # execution of a pre-existing file (e.g. already shipped in $srcdir) followed
+    # later by an unrelated download to the same path was flagged as if it
+    # executed the downloaded content, which it did not.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          bash /tmp/helper.sh
+          curl -o /tmp/helper.sh https://example.com/refresh.sh
+        }
+        """
+    )
+    assert list(RCE003FetchThenExecute().check(ctx)) == []
+
+
+def test_rce003_fires_when_execution_precedes_a_later_redownload(make_pkgbuild_ctx):
+    # Regression: downloaded_paths overwrote a path's position with the *latest*
+    # download, so a download-execute-redownload chain to the same path had the
+    # execution's comparison made against the redownload (which came after it),
+    # wrongly clearing a real finding for content that genuinely was downloaded
+    # before being executed.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          curl -o /tmp/helper.sh https://example.com/helper.sh
+          bash /tmp/helper.sh
+          curl -o /tmp/helper.sh https://example.com/refresh.sh
+        }
+        """
+    )
+    assert len(list(RCE003FetchThenExecute().check(ctx))) == 1
+
+
 def test_rce004_fires_on_disguised_patch_source_sourced(make_pkgbuild_ctx):
     ctx = make_pkgbuild_ctx(
         """
