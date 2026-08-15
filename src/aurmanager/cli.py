@@ -77,7 +77,7 @@ def _select_rules(include_csv: str | None, exclude_csv: str | None):
 
     if include_csv:
         ids = [r.strip() for r in include_csv.split(",") if r.strip()]
-        if not all(i in known for i in ids):
+        if not ids or not all(i in known for i in ids):
             return None
         selected = [known[i] for i in ids]
     else:

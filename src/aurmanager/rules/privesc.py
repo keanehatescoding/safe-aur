@@ -4,7 +4,14 @@ import re
 from typing import Iterable
 
 from ..model import Finding, RuleContext, Severity
-from ..parser.bash_ast import command_name, command_words, describe_scope, iter_scopes, line_of, walk
+from ..parser.bash_ast import (
+    command_name,
+    command_words,
+    describe_scope,
+    iter_scopes,
+    line_and_snippet,
+    walk,
+)
 from ..regex_fallback import find_line_matches
 from .base import Rule
 
@@ -54,8 +61,7 @@ class PRV001SudoInBuildLifecycle(Rule):
                 name = command_name(node)
                 if name in _ELEVATION_COMMANDS:
                     words = command_words(node)
-                    line = line_of(node.pos[0], ctx.source)
-                    snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+                    line, snippet = line_and_snippet(node.pos[0], ctx.source)
                     findings.append(
                         Finding(
                             rule_id=self.rule_id,

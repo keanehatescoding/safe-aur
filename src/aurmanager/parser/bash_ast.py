@@ -64,6 +64,16 @@ def strip_array_literals(source: str) -> tuple[str, dict[str, str]]:
                 elif c == ")":
                     depth -= 1
             j += 1
+        if depth > 0:
+            # Ran off the end of the file without a matching ')' -- e.g. an
+            # unterminated quote inside the array literal ate the rest of the
+            # source. Masking to EOF here would silently blind every rule to
+            # everything after this point with no parse error surfaced, so
+            # this must fail loudly and let parse_script() report it instead.
+            raise ValueError(
+                f"unterminated array literal '{name}=(' starting at line "
+                f"{source.count(chr(10), 0, m.start()) + 1}"
+            )
         inner = source[start_inner : j - 1]
         if is_append and name in extracted:
             # depends+=('foo') should append to the array, not replace it -- common
@@ -143,8 +153,17 @@ class ParsedScript:
 
 
 def parse_script(source: str) -> ParsedScript:
-    cleaned, raw_arrays = strip_array_literals(source)
-    arrays = {name: split_array_elements(inner) for name, inner in raw_arrays.items()}
+    try:
+        cleaned, raw_arrays = strip_array_literals(source)
+        arrays = {name: split_array_elements(inner) for name, inner in raw_arrays.items()}
+    except Exception as e:
+        # e.g. an unterminated quote inside an array literal. Must degrade to a
+        # reported parse_error (surfaced by rules/meta.py), never mask the rest
+        # of the file to whitespace and report a silent clean scan.
+        return ParsedScript(
+            source=source, ast_nodes=[], arrays={}, parse_error=f"{type(e).__name__}: {e}"
+        )
+
     try:
         nodes = list(bashlex.parse(cleaned))
         return ParsedScript(source=source, ast_nodes=nodes, arrays=arrays, parse_error=None)
@@ -163,6 +182,15 @@ def parse_script(source: str) -> ParsedScript:
 
 def line_of(offset: int, source: str) -> int:
     return source.count("\n", 0, offset) + 1
+
+
+def line_and_snippet(offset: int, source: str) -> tuple[int, str | None]:
+    """1-indexed line number and stripped source text of that line for a given
+    character offset -- the (line_of() + splitlines()[line-1].strip()) idiom every
+    rule needs when reporting a Finding, in one place."""
+    line = line_of(offset, source)
+    snippet = source.splitlines()[line - 1].strip() if line else None
+    return line, snippet
 
 
 def walk(node: Any) -> Iterator[Any]:

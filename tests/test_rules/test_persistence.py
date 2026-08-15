@@ -125,6 +125,20 @@ def test_per006_does_not_fire_on_normal_tmp_use(make_pkgbuild_ctx):
     assert list(PER006DisguisedBinaryDrop().check(ctx)) == []
 
 
+def test_per006_fires_on_disguised_tmp_binary_with_trailing_slash(make_pkgbuild_ctx):
+    # Regression: _DISGUISED_NAME_RE was anchored with a bare $, so a destination
+    # path with a trailing slash (treating the target as a directory) evaded
+    # detection even though the disguised name is identical.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          cp payload /tmp/systemd-initd/
+        }
+        """
+    )
+    assert len(list(PER006DisguisedBinaryDrop().check(ctx))) == 1
+
+
 def test_per006_fires_on_bracketed_kworker_name_with_colon(make_pkgbuild_ctx):
     # Real per-CPU kernel-thread names look like [kworker/0:3] -- the colon (and
     # internal slash) must not break basename matching.

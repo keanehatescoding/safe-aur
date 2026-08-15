@@ -10,7 +10,7 @@ from ..parser.bash_ast import (
     describe_scope,
     download_output_targets,
     iter_scopes,
-    line_of,
+    line_and_snippet,
     normalize_path,
     walk,
 )
@@ -24,8 +24,7 @@ _download_output_targets = download_output_targets
 
 
 def _finding_at(rule: Rule, ctx: RuleContext, offset: int, message: str, remediation: str) -> Finding:
-    line = line_of(offset, ctx.source)
-    snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+    line, snippet = line_and_snippet(offset, ctx.source)
     return Finding(
         rule_id=rule.rule_id,
         severity=rule.default_severity,
@@ -166,7 +165,13 @@ class RCE003FetchThenExecute(Rule):
                 elif len(words) >= 2 and words[0] in _INTERPRETERS and _normalize_path(words[1]) in downloaded_paths:
                     target = _normalize_path(words[1])
 
-                if target in downloaded_paths:
+                # A path match alone isn't enough -- the execution must happen
+                # *after* the download that wrote to that path, or this is just
+                # an unrelated command reusing a path a later statement happens
+                # to also download to (e.g. running a file already shipped in
+                # $srcdir, followed by an unrelated refresh download to the same
+                # name).
+                if target in downloaded_paths and cmd.pos[0] > downloaded_paths[target]:
                     findings.append(
                         _finding_at(
                             self,

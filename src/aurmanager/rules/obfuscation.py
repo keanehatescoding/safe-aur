@@ -4,7 +4,7 @@ import re
 from typing import Iterable
 
 from ..model import Finding, RuleContext, Severity
-from ..parser.bash_ast import command_name, describe_scope, iter_scopes, walk
+from ..parser.bash_ast import command_name, describe_scope, iter_scopes, line_and_snippet, walk
 from ..regex_fallback import find_line_matches
 from .base import Rule
 
@@ -65,8 +65,7 @@ class OBF002EvalUsage(Rule):
         for fn_name, fn_node in iter_scopes(ctx):
             for node in walk(fn_node):
                 if getattr(node, "kind", None) == "command" and command_name(node) == "eval":
-                    line = ctx.source.count("\n", 0, node.pos[0]) + 1
-                    snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+                    line, snippet = line_and_snippet(node.pos[0], ctx.source)
                     findings.append(
                         Finding(
                             rule_id=self.rule_id,

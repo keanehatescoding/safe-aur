@@ -4,7 +4,7 @@ import re
 from typing import Iterable
 
 from ..model import Finding, RuleContext, Severity
-from ..parser.bash_ast import describe_scope, line_of
+from ..parser.bash_ast import describe_scope, line_and_snippet
 from .base import Rule
 
 _NETWORK_UPLOAD_RE = re.compile(
@@ -34,8 +34,7 @@ class _ReadThenUploadRule(Rule):
         if not (read_match and upload_match):
             return []
         offset = base_offset + read_match.start()
-        line = line_of(offset, ctx.source)
-        snippet = ctx.source.splitlines()[line - 1].strip() if line else None
+        line, snippet = line_and_snippet(offset, ctx.source)
         return [
             Finding(
                 rule_id=self.rule_id,
