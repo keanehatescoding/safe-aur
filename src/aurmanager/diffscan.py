@@ -65,7 +65,7 @@ class DiffResult:
                 "diff_verdict": self.diff_verdict.name,
                 "new_findings": [f.to_dict() for f in shown(self.new_findings)],
                 "carried_findings": [f.to_dict() for f in shown(self.carried_findings)],
-                "resolved_findings": [f.to_dict() for f in self.resolved_findings],
+                "resolved_findings": [f.to_dict() for f in shown(self.resolved_findings)],
                 "new_functions": self.new_functions,
                 "removed_functions": self.removed_functions,
                 "new_sources": self.new_sources,

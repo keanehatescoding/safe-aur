@@ -47,6 +47,7 @@ def render_diff_text(
 ) -> str:
     new_shown = [f for f in diff.new_findings if f.severity >= severity_min]
     carried_shown = [f for f in diff.carried_findings if f.severity >= severity_min]
+    resolved_shown = [f for f in diff.resolved_findings if f.severity >= severity_min]
 
     lines: list[str] = []
 
@@ -59,13 +60,23 @@ def render_diff_text(
 
     if diff.new_functions:
         lines.append(f"New function(s): {', '.join(diff.new_functions)}")
+    if diff.removed_functions:
+        lines.append(f"Removed function(s): {', '.join(diff.removed_functions)}")
     if diff.new_sources:
         lines.append(f"New source(s): {', '.join(diff.new_sources)}")
+    if diff.removed_sources:
+        lines.append(f"Removed source(s): {', '.join(diff.removed_sources)}")
     if diff.weakened_checksum_sources:
         lines.append(
             "Checksum coverage weakened for: " + ", ".join(diff.weakened_checksum_sources)
         )
-    if diff.new_functions or diff.new_sources or diff.weakened_checksum_sources:
+    if (
+        diff.new_functions
+        or diff.removed_functions
+        or diff.new_sources
+        or diff.removed_sources
+        or diff.weakened_checksum_sources
+    ):
         lines.append("")
 
     if carried_shown:
@@ -74,9 +85,9 @@ def render_diff_text(
         )
         lines.extend(_render_findings(carried_shown, use_color))
 
-    if diff.resolved_findings:
-        lines.append(f"=== Findings resolved in this update ({len(diff.resolved_findings)}) ===")
-        for f in diff.resolved_findings:
+    if resolved_shown:
+        lines.append(f"=== Findings resolved in this update ({len(resolved_shown)}) ===")
+        for f in resolved_shown:
             lines.append(f"[{f.severity.name}] {f.rule_id} — {f.message}")
         lines.append("")
 

@@ -168,3 +168,39 @@ def test_diff_detects_new_function_and_weakened_checksum(tmp_path):
     diff = diff_scan(old, new)
     assert diff.new_functions == ["post_install"]
     assert diff.weakened_checksum_sources == ["https://example.com/$pkgname-$pkgver.tar.gz"]
+
+
+def test_diff_json_applies_severity_min_to_resolved_findings_too(tmp_path):
+    # Regression: to_json() filtered new_findings/carried_findings by severity_min
+    # but not resolved_findings, so a low-severity resolved finding always showed
+    # up in the JSON output regardless of the requested threshold.
+    old = _write(
+        tmp_path,
+        "old",
+        """
+        pkgname=foo
+        pkgver=1.0
+        source=("https://example.com/$pkgname-$pkgver.tar.gz")
+        sha256sums=('SKIP')
+        """,
+    )
+    new = _write(
+        tmp_path,
+        "new",
+        """
+        pkgname=foo
+        pkgver=1.1
+        source=("https://example.com/$pkgname-$pkgver.tar.gz")
+        sha256sums=('deadbeef')
+        """,
+    )
+    diff = diff_scan(old, new)
+    assert [f.rule_id for f in diff.resolved_findings] == ["INT003"]
+
+    import json
+
+    filtered = json.loads(diff.to_json(severity_min=Severity.CRITICAL))
+    assert filtered["resolved_findings"] == []
+
+    unfiltered = json.loads(diff.to_json())
+    assert [f["rule_id"] for f in unfiltered["resolved_findings"]] == ["INT003"]
