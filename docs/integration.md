@@ -40,6 +40,10 @@ yay has a Lua hook system (`~/.config/yay/init.lua`). Copy
 `AURPreInstall` block into an existing `init.lua`):
 
 ```lua
+local function shell_quote(s)
+  return "'" .. s:gsub("'", "'\\''") .. "'"
+end
+
 yay.create_autocmd("AURPreInstall", {
   desc = "run aur-manager scan before building",
   callback = function(event)
@@ -50,6 +54,11 @@ yay.create_autocmd("AURPreInstall", {
   end,
 })
 ```
+
+(`shell_quote` is included above so this block is copy-pasteable on its own — if
+you're merging into an existing `init.lua` that already defines it, or merging
+the whole [`yay-init.lua`](../integrations/yay-init.lua) file directly, don't
+duplicate the definition.)
 
 `AURPreInstall` fires once per package base, after the PKGBUILD is
 downloaded, before the review/edit menu and before any build. `yay.abort()`
