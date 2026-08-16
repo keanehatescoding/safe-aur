@@ -5,10 +5,11 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .diffscan import diff_scan
 from .engine import scan
 from .loader import LoaderError, resolve
 from .model import Severity
-from .report import render_text
+from .report import render_diff_text, render_text
 from .rules import ALL_RULES
 
 
@@ -44,6 +45,37 @@ def main(argv: list[str] | None = None) -> int:
     )
     scan_p.add_argument("--no-color", action="store_true", help="disable ANSI colors in text output")
 
+    diff_p = sub.add_parser(
+        "diff",
+        help="compare two versions of the same package and highlight what an update newly introduces",
+    )
+    diff_p.add_argument("old_path", type=Path, help="path to the previous PKGBUILD/checkout")
+    diff_p.add_argument("new_path", type=Path, help="path to the updated PKGBUILD/checkout")
+    diff_p.add_argument("--json", action="store_true", help="emit machine-readable JSON instead of text")
+    diff_p.add_argument(
+        "--fail-on",
+        default="high",
+        choices=[s.name.lower() for s in Severity],
+        help="exit non-zero if the diff verdict (new findings only) is at or above this severity (default: high)",
+    )
+    diff_p.add_argument(
+        "--severity-min",
+        default="info",
+        choices=[s.name.lower() for s in Severity],
+        help="only display findings at or above this severity, independent of --fail-on (default: info)",
+    )
+    diff_p.add_argument(
+        "--rules",
+        metavar="RULE_ID,...",
+        help="only run these comma-separated rule ids (default: all rules)",
+    )
+    diff_p.add_argument(
+        "--exclude-rules",
+        metavar="RULE_ID,...",
+        help="skip these comma-separated rule ids",
+    )
+    diff_p.add_argument("--no-color", action="store_true", help="disable ANSI colors in text output")
+
     args = parser.parse_args(argv)
 
     if args.command == "scan":
@@ -68,6 +100,32 @@ def main(argv: list[str] | None = None) -> int:
 
         threshold = Severity.from_str(args.fail_on)
         return 1 if result.overall_verdict >= threshold else 0
+
+    if args.command == "diff":
+        active_rules = _select_rules(args.rules, args.exclude_rules)
+        if active_rules is None:
+            print("error: unknown rule id in --rules/--exclude-rules", file=sys.stderr)
+            return 2
+
+        try:
+            diff = diff_scan(args.old_path, args.new_path, rules=active_rules)
+        except LoaderError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+
+        severity_min = Severity.from_str(args.severity_min)
+
+        if args.json:
+            print(diff.to_json(severity_min=severity_min))
+        else:
+            print(
+                render_diff_text(
+                    diff, use_color=not args.no_color and sys.stdout.isatty(), severity_min=severity_min
+                )
+            )
+
+        threshold = Severity.from_str(args.fail_on)
+        return 1 if diff.diff_verdict >= threshold else 0
 
     return 2
 
