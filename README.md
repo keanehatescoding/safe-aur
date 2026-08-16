@@ -61,6 +61,13 @@ finding subject to the same severity threshold, not a special case · `2` couldn
 resolve the path, load the files, or an invalid `--rules`/`--exclude-rules` id was
 given.
 
+### Running this automatically before every build
+
+A scanner only helps if it actually runs. See
+[`docs/integration.md`](docs/integration.md) for wiring `aur-manager` into
+paru's `PreBuildCommand` or yay's `AURPreInstall` Lua hook, so scanning
+happens on every build instead of requiring you to remember to run it.
+
 ## Rule provenance
 
 Detection rules are grounded in documented AUR security incidents wherever one
