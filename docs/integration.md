@@ -31,15 +31,21 @@ real paru install.
 **Verified behavior** — confirmed both by reading paru v2.1.0's source
 (`src/install.rs:pre_build_command`, `src/exec.rs:command`; `paru.conf(5)`
 documents the option but not its exit-code behavior) *and* by live-testing
-against a real, installed paru v2.1.0 with `paru -B` against a throwaway local
-PKGBUILD containing an RCE001-triggering construct: the command runs via
-`sh -c` with its working directory set to the package's PKGBUILD directory,
-and a non-zero exit is propagated as an error that aborts paru's entire
-operation before any build starts — confirmed by observing that `build()`
-genuinely never ran (no `src/` directory was created) once `aur-manager`
-flagged the PKGBUILD and exited non-zero. `aur-manager scan`'s own exit code
-(`1` at or above `--fail-on`) is exactly what this needs — no wrapper script
-required.
+against a real, installed paru v2.1.0: the command runs via `sh -c` with its
+working directory set to each package's PKGBUILD directory, and a non-zero
+exit is propagated as an error that aborts paru's *entire* operation — not
+just the flagged package.
+
+This is genuinely operation-wide, not per-package, because of how the source
+is structured: `PreBuildCommand` runs for every package in the batch, in one
+loop, entirely *before* any of them enters the actual build phase (a separate,
+later loop). Confirmed with a 3-package `paru -B` batch (package A clean,
+package B containing an RCE001-triggering construct, package C clean): A
+scanned clean first, B got flagged and aborted the run, and **C's hook was
+never even reached — but neither was A's build, despite A having already
+passed its own scan**. No `src/` directory was created for any of the three
+packages. `aur-manager scan`'s own exit code (`1` at or above `--fail-on`) is
+exactly what this needs — no wrapper script required.
 
 Re-verify this against your installed paru version before relying on it as a
 hard gate in an unattended context; behavior not covered by `paru.conf(5)`

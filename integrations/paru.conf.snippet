@@ -12,16 +12,18 @@
 # every prior version of this snippet had exactly that bug.
 #
 # Verified end-to-end against paru v2.1.0 (src/install.rs:pre_build_command,
-# src/exec.rs:command; also confirmed live with a real `paru -B` build): the
-# command runs once per package, before that package's build, via `sh -c`
-# with cwd set to the PKGBUILD's directory and $PKGBASE/$VERSION set. A
-# non-zero exit is propagated as an error that aborts paru's entire operation
-# before any build starts -- a live test with an RCE001-triggering PKGBUILD
-# confirmed build() genuinely never ran (no src/ directory was created) after
-# aur-manager flagged it and exited non-zero. This exit-code-aborts behavior
-# is NOT documented in paru.conf(5); it was confirmed by reading the source
-# and by live testing, so re-verify against your installed paru version if
-# you're relying on it for a hard gate.
+# src/exec.rs:command; also confirmed live with real `paru -B` builds): the
+# command runs once per package, via `sh -c` with cwd set to the PKGBUILD's
+# directory and $PKGBASE/$VERSION set. A non-zero exit is propagated as an
+# error that aborts paru's ENTIRE operation, not just the flagged package --
+# confirmed with a live 3-package batch (clean, RCE001-flagged, clean): the
+# flagged package aborted the whole run, and even the already-scanned-clean
+# package before it never got to build() either, because PreBuildCommand
+# runs for every package in one loop, entirely before any of them enters the
+# actual build phase. This exit-code-aborts behavior is NOT documented in
+# paru.conf(5); it was confirmed by reading the source and by live testing,
+# so re-verify against your installed paru version if you're relying on it
+# for a hard gate.
 
 [bin]
 PreBuildCommand = aur-manager scan --fail-on high .
