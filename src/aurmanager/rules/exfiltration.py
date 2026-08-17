@@ -22,6 +22,17 @@ _BROWSER_STORE_RE = re.compile(
     r"|\.config/(?:chromium|BraveSoftware)/[^\s]*(?:Login Data|Cookies))"
 )
 _ENV_DUMP_RE = re.compile(r"\b(?:env|printenv|export\s+-p)\b")
+_DEV_CLOUD_CRED_READ_RE = re.compile(
+    r"\b(?:cat|cp|tar|find|scp|rsync)\b[^\n]*"
+    r"(?:~?/?\.aws/(?:credentials|config)\b"
+    r"|~?/?\.config/gcloud/"
+    r"|~?/?\.azure/"
+    r"|~?/?\.docker/config\.json\b"
+    r"|~?/?\.npmrc\b"
+    r"|~?/?\.git-credentials\b"
+    r"|~?/?\.netrc\b"
+    r"|~?/?\.kube/config\b)"
+)
 
 
 class _ReadThenUploadRule(Rule):
@@ -115,3 +126,20 @@ class EXF004EnvironmentExfiltration(_ReadThenUploadRule):
     default_severity = Severity.HIGH
     read_pattern = _ENV_DUMP_RE
     what = "the process environment"
+
+
+class EXF005DeveloperCloudCredentialExfiltration(_ReadThenUploadRule):
+    """Same shape again, targeting developer/CI and cloud-provider credential
+    files -- AWS/GCP/Azure credentials, Docker registry auth, npm/git tokens,
+    and kubeconfig. The 2026 Atomic Arch infostealer's payload was documented
+    to steal exactly this alongside the SSH keys EXF001 already covers: 'SSH
+    keys, and GitHub/npm/cloud/Docker tokens' (see
+    tests/fixtures/incidents/2026_atomic_arch_install_hook_and_obfuscation/
+    SOURCE.md)."""
+
+    rule_id = "EXF005"
+    category = "exfiltration"
+    default_severity = Severity.CRITICAL
+    incident_refs = ("AUR-2026-atomic-arch",)
+    read_pattern = _DEV_CLOUD_CRED_READ_RE
+    what = "developer/cloud credential files (AWS/GCP/Azure, Docker, npm, git, or kubeconfig)"
