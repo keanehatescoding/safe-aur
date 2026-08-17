@@ -5,6 +5,7 @@ from typing import Iterable
 
 from ..model import Finding, RuleContext, Severity
 from ..parser.bash_ast import command_name, command_words, line_and_snippet, walk
+from ..parser.pkgbuild import CHECKSUM_KEYS
 from .base import Rule
 
 _PACKAGE_MANAGERS = {
@@ -271,6 +272,77 @@ class INT005InstallHookPullsUnpinnedDeps(Rule):
                             "Package the actual runtime dependency properly (depends=()) "
                             "instead of fetching it via a package manager at install time."
                         ),
+                    )
+                )
+        return findings
+
+
+class INT006SrcinfoPkgbuildMismatch(Rule):
+    """.SRCINFO is committed alongside every real AUR PKGBUILD -- it's what the
+    AUR website displays and what some tooling reads without executing the
+    PKGBUILD (paru's own docs note it deliberately does *not* trust a
+    committed .SRCINFO for dependency resolution, regenerating it fresh from
+    the real PKGBUILD instead, precisely because a committed one can go
+    stale or be wrong). If a PKGBUILD's own checksums or source count don't
+    match its sibling .SRCINFO, either the maintainer edited the PKGBUILD
+    without regenerating .SRCINFO (the ArchWiki-documented workflow requires
+    doing so after every PKGBUILD change), or the mismatch is deliberate: the
+    metadata a reviewer sees doesn't reflect what the script actually
+    declares. Generic heuristic, not tied to one specific incident.
+
+    Deliberately does not compare source *URLs* directly: .SRCINFO is fully
+    variable-resolved by makepkg (source=("$pkgname-$pkgver.tar.gz::...")
+    becomes a literal string in .SRCINFO), while ctx.sources is the
+    PKGBUILD's raw, unexpanded text -- verified empirically by running
+    `makepkg --printsrcinfo` against a real PKGBUILD. A naive string
+    comparison would false-positive on nearly every real-world PKGBUILD,
+    which almost universally templates $pkgname/$pkgver into source URLs.
+    Checksums and array counts are never templated with bash variables, so
+    comparing those is unambiguous without needing to resolve them."""
+
+    rule_id = "INT006"
+    category = "integrity"
+    default_severity = Severity.MEDIUM
+
+    def check(self, ctx: RuleContext) -> Iterable[Finding]:
+        if not ctx.srcinfo_present:
+            return []
+        findings: list[Finding] = []
+
+        if len(ctx.sources) != len(ctx.srcinfo_sources):
+            findings.append(
+                Finding(
+                    rule_id=self.rule_id,
+                    severity=self.default_severity,
+                    message=(
+                        f"PKGBUILD declares {len(ctx.sources)} source(s) but the sibling "
+                        f".SRCINFO declares {len(ctx.srcinfo_sources)} -- .SRCINFO is stale "
+                        f"or was hand-edited and no longer reflects this PKGBUILD."
+                    ),
+                    file=ctx.file,
+                    line=None,
+                    snippet=None,
+                    remediation="Run `makepkg --printsrcinfo > .SRCINFO` and commit the result.",
+                )
+            )
+
+        for key in CHECKSUM_KEYS:
+            pkgbuild_sums = ctx.checksums.get(key, [])
+            srcinfo_sums = ctx.srcinfo_checksums.get(key, [])
+            if pkgbuild_sums and srcinfo_sums and pkgbuild_sums != srcinfo_sums:
+                findings.append(
+                    Finding(
+                        rule_id=self.rule_id,
+                        severity=self.default_severity,
+                        message=(
+                            f"'{key}' in PKGBUILD does not match the sibling .SRCINFO -- the "
+                            f"checksums a reviewer sees in .SRCINFO don't match what makepkg "
+                            f"will actually verify downloads against."
+                        ),
+                        file=ctx.file,
+                        line=None,
+                        snippet=None,
+                        remediation="Run `makepkg --printsrcinfo > .SRCINFO` and commit the result.",
                     )
                 )
         return findings

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ..model import RuleContext
 from .bash_ast import build_module_scope, extract_functions, mask_function_bodies, parse_script
+from .srcinfo import parse_srcinfo_fields
 
 _SCALAR_RE = re.compile(
     r'^\s*(pkgname|pkgver|pkgrel|pkgbase)=(["\']?)(.*?)\2\s*$', re.MULTILINE
@@ -83,6 +84,25 @@ def parse_pkgbuild(path: Path) -> RuleContext:
     module_scope = build_module_scope(parsed.ast_nodes, source)
     module_scope_source = mask_function_bodies(parsed.ast_nodes, source)
 
+    # .SRCINFO is committed alongside every real AUR PKGBUILD and is what the
+    # AUR website displays and some tooling reads without executing the
+    # PKGBUILD -- see rules/integrity.py:INT006. Sibling file, not always
+    # present (e.g. a bare snapshot tarball rather than a git checkout), so
+    # its absence is not itself a finding.
+    srcinfo_path = path.parent / ".SRCINFO"
+    srcinfo_present = srcinfo_path.is_file()
+    srcinfo_sources: list[str] = []
+    srcinfo_checksums: dict[str, list[str]] = {}
+    if srcinfo_present:
+        srcinfo_fields = parse_srcinfo_fields(srcinfo_path)
+        srcinfo_arch_suffixes = sorted(set(srcinfo_fields.get("arch", [])))
+        srcinfo_sources = _merge_arch_variants(srcinfo_fields, "source", srcinfo_arch_suffixes)
+        srcinfo_checksums = {
+            key: merged
+            for key in CHECKSUM_KEYS
+            if (merged := _merge_arch_variants(srcinfo_fields, key, srcinfo_arch_suffixes))
+        }
+
     return RuleContext(
         file=path,
         source=source,
@@ -95,4 +115,7 @@ def parse_pkgbuild(path: Path) -> RuleContext:
         functions=functions,
         module_scope=module_scope,
         module_scope_source=module_scope_source,
+        srcinfo_present=srcinfo_present,
+        srcinfo_sources=srcinfo_sources,
+        srcinfo_checksums=srcinfo_checksums,
     )

