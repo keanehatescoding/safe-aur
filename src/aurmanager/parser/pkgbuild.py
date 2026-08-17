@@ -21,6 +21,32 @@ CHECKSUM_KEYS = (
     "b2sums",
 )
 
+# makepkg supports architecture-specific overrides for source and every
+# checksum array (source_x86_64=(), sha256sums_aarch64=(), ...) -- makepkg
+# builds the effective array for the current CARCH as base + arch-suffixed,
+# so a source hidden only in an arch-specific array is just as real as one in
+# the base array, but was previously invisible to every rule that reads
+# ctx.sources/ctx.checksums (RCE004, INT002, INT003), regardless of which
+# architecture a reviewer's machine happens to be. We don't know CARCH
+# statically and don't need to: every arch suffix the PKGBUILD itself
+# declares in arch=() is merged in, so nothing hidden behind any of them
+# goes unseen.
+#
+# Suffix candidates are restricted to values actually declared in arch=()
+# (not just any array named source_<word>): makepkg itself only ever treats
+# source_<arch>/<checksum>_<arch> as a real override when <arch> matches a
+# declared architecture, so an unrelated array that happens to be named e.g.
+# source_notes or sha256sums_backup is not something makepkg would ever
+# consume as source data, and merging it in would inject non-source content
+# into ctx.sources/ctx.checksums.
+
+
+def _merge_arch_variants(arrays: dict[str, list[str]], base_key: str, arch_suffixes: list[str]) -> list[str]:
+    combined = list(arrays.get(base_key, []))
+    for arch in arch_suffixes:
+        combined += arrays.get(f"{base_key}_{arch}", [])
+    return combined
+
 
 def parse_pkgbuild(path: Path) -> RuleContext:
     source = path.read_text(errors="replace")
@@ -39,7 +65,20 @@ def parse_pkgbuild(path: Path) -> RuleContext:
     array_names = parsed.arrays.get("pkgname")
     pkgname = array_names[0] if array_names else scalars.get("pkgname")
 
-    checksums = {k: v for k, v in parsed.arrays.items() if k in CHECKSUM_KEYS}
+    # Sorted for a deterministic merge order, applied identically to `source`
+    # and every checksum key -- this preserves index alignment between a
+    # source and its checksum entries (an invariant makepkg itself requires:
+    # each arch block's source/checksum arrays must be the same length),
+    # since both are built by appending the same arch suffixes in the same
+    # order.
+    arch_suffixes = sorted(set(parsed.arrays.get("arch", [])))
+
+    sources = _merge_arch_variants(parsed.arrays, "source", arch_suffixes)
+    checksums = {
+        key: merged
+        for key in CHECKSUM_KEYS
+        if (merged := _merge_arch_variants(parsed.arrays, key, arch_suffixes))
+    }
     functions = extract_functions(parsed.ast_nodes)
     module_scope = build_module_scope(parsed.ast_nodes, source)
     module_scope_source = mask_function_bodies(parsed.ast_nodes, source)
@@ -51,7 +90,7 @@ def parse_pkgbuild(path: Path) -> RuleContext:
         parse_error=parsed.parse_error,
         pkgname=pkgname,
         pkgver=scalars.get("pkgver"),
-        sources=parsed.arrays.get("source", []),
+        sources=sources,
         checksums=checksums,
         functions=functions,
         module_scope=module_scope,
