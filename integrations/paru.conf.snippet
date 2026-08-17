@@ -1,17 +1,29 @@
 # aur-manager pre-build hook for paru.
 #
-# Install: merge the [options] line below into your ~/.config/paru/paru.conf
-# (add it under an existing [options] section, don't duplicate the header).
-# Requires `aur-manager` to be on PATH.
+# Install: merge the [bin] section below into your ~/.config/paru/paru.conf
+# (add PreBuildCommand under an existing [bin] section if you have one,
+# don't duplicate the header). Requires `aur-manager` to be on PATH.
 #
-# Verified against paru v2.1.0 source (src/install.rs:pre_build_command,
-# src/exec.rs:command): PreBuildCommand runs once per package, before that
-# package's build, via `sh -c` with cwd set to the PKGBUILD's directory and
-# $PKGBASE/$VERSION set. A non-zero exit is propagated as an error through
-# paru's install flow and aborts the whole operation before any build starts
-# -- this exit-code-aborts behavior is NOT documented in paru.conf(5); it was
-# confirmed by reading the source directly, so re-verify against your
-# installed paru version if you're relying on it for a hard gate.
+# PreBuildCommand is parsed under [bin] (src/config.rs:parse_bin), NOT
+# [options] despite being an "options"-sounding setting -- confirmed live
+# against paru v2.1.0 (the actual installed/tagged release, not just source
+# inspection): a config with PreBuildCommand under [options] fails outright
+# with "error: unknown option 'PreBuildCommand' in section [options]", and
+# every prior version of this snippet had exactly that bug.
+#
+# Verified end-to-end against paru v2.1.0 (src/install.rs:pre_build_command,
+# src/exec.rs:command; also confirmed live with real `paru -B` builds): the
+# command runs once per package, via `sh -c` with cwd set to the PKGBUILD's
+# directory and $PKGBASE/$VERSION set. A non-zero exit is propagated as an
+# error that aborts paru's ENTIRE operation, not just the flagged package --
+# confirmed with a live 3-package batch (clean, RCE001-flagged, clean): the
+# flagged package aborted the whole run, and even the already-scanned-clean
+# package before it never got to build() either, because PreBuildCommand
+# runs for every package in one loop, entirely before any of them enters the
+# actual build phase. This exit-code-aborts behavior is NOT documented in
+# paru.conf(5); it was confirmed by reading the source and by live testing,
+# so re-verify against your installed paru version if you're relying on it
+# for a hard gate.
 
-[options]
+[bin]
 PreBuildCommand = aur-manager scan --fail-on high .
