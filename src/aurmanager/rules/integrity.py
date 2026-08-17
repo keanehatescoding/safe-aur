@@ -329,7 +329,12 @@ class INT006SrcinfoPkgbuildMismatch(Rule):
         for key in CHECKSUM_KEYS:
             pkgbuild_sums = ctx.checksums.get(key, [])
             srcinfo_sums = ctx.srcinfo_checksums.get(key, [])
-            if pkgbuild_sums and srcinfo_sums and pkgbuild_sums != srcinfo_sums:
+            # Compares even when only one side declares this key at all -- a
+            # checksum array present in .SRCINFO but entirely removed from
+            # PKGBUILD (or vice versa) is exactly as much a mismatch as
+            # differing values would be; `[] != []` for a key neither side
+            # uses keeps that case correctly silent.
+            if pkgbuild_sums != srcinfo_sums:
                 findings.append(
                     Finding(
                         rule_id=self.rule_id,

@@ -355,6 +355,34 @@ pkgname = foo
     assert "sha256sums" in findings[0].message
 
 
+def test_int006_fires_when_checksum_key_present_on_only_one_side(tmp_path):
+    # Regression: the comparison required BOTH sides to declare a checksum
+    # key before comparing, so a key entirely removed from PKGBUILD (or
+    # entirely absent from .SRCINFO) went undetected -- e.g. an attacker
+    # renaming sha256sums to md5sums in PKGBUILD without regenerating
+    # .SRCINFO used to silently pass.
+    ctx = _make_ctx_with_srcinfo(
+        tmp_path,
+        pkgbuild_body="""
+        pkgname=foo
+        pkgver=1.0
+        source=("https://example.com/foo.tar.gz")
+        md5sums=('deadbeef')
+        """,
+        srcinfo_body="""pkgbase = foo
+\tpkgver = 1.0
+\tsource = foo.tar.gz::https://example.com/foo.tar.gz
+\tsha256sums = deadbeef
+
+pkgname = foo
+""",
+    )
+    findings = list(INT006SrcinfoPkgbuildMismatch().check(ctx))
+    keys_mentioned = {"md5sums" if "md5sums" in f.message else "sha256sums" for f in findings}
+    assert len(findings) == 2
+    assert keys_mentioned == {"md5sums", "sha256sums"}
+
+
 def test_int006_fires_on_source_count_mismatch(tmp_path):
     # A source added to PKGBUILD without regenerating .SRCINFO -- the metadata
     # a reviewer sees (.SRCINFO) no longer reflects what the script declares.
