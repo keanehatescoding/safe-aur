@@ -17,21 +17,33 @@ before each package builds. Merge [`paru.conf.snippet`](../integrations/paru.con
 into `~/.config/paru/paru.conf`:
 
 ```ini
-[options]
+[bin]
 PreBuildCommand = aur-manager scan --fail-on high .
 ```
 
-**Verified behavior** (read directly from paru v2.1.0's source —
-`src/install.rs:pre_build_command`, `src/exec.rs:command` — since `paru.conf(5)`
-documents the option but not its exit-code behavior): the command runs via
+It goes under `[bin]`, not `[options]` — despite reading like a general option,
+it's parsed by `parse_bin()` (`src/config.rs`). Getting the section wrong fails
+loudly (`error: unknown option 'PreBuildCommand' in section [options]`) rather
+than silently doing nothing, but it's an easy mistake: an earlier version of
+this doc had it under `[options]` and was wrong until live-tested against a
+real paru install.
+
+**Verified behavior** — confirmed both by reading paru v2.1.0's source
+(`src/install.rs:pre_build_command`, `src/exec.rs:command`; `paru.conf(5)`
+documents the option but not its exit-code behavior) *and* by live-testing
+against a real, installed paru v2.1.0 with `paru -B` against a throwaway local
+PKGBUILD containing an RCE001-triggering construct: the command runs via
 `sh -c` with its working directory set to the package's PKGBUILD directory,
 and a non-zero exit is propagated as an error that aborts paru's entire
-operation before any build starts. `aur-manager scan`'s own exit code (`1` at
-or above `--fail-on`) is exactly what this needs — no wrapper script required.
+operation before any build starts — confirmed by observing that `build()`
+genuinely never ran (no `src/` directory was created) once `aur-manager`
+flagged the PKGBUILD and exited non-zero. `aur-manager scan`'s own exit code
+(`1` at or above `--fail-on`) is exactly what this needs — no wrapper script
+required.
 
 Re-verify this against your installed paru version before relying on it as a
-hard gate in an unattended context; it's confirmed by source inspection, not
-by the man page, and could change in a future release.
+hard gate in an unattended context; behavior not covered by `paru.conf(5)`
+itself could change in a future release.
 
 ## yay (v13+)
 
