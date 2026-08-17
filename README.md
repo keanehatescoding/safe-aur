@@ -104,6 +104,13 @@ Accepts the same `--json`, `--severity-min`, `--rules`/`--exclude-rules`, and
 verdict** — driven only by `new_findings` — not the new version's overall verdict,
 so a pre-existing, already-carried finding doesn't by itself fail an update check.
 
+### Running this automatically before every build
+
+A scanner only helps if it actually runs. See
+[`docs/integration.md`](docs/integration.md) for wiring `aur-manager` into
+paru's `PreBuildCommand` or yay's `AURPreInstall` Lua hook, so scanning
+happens on every build instead of requiring you to remember to run it.
+
 ## Rule provenance
 
 Detection rules are grounded in documented AUR security incidents wherever one

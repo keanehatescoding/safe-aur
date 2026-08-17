@@ -1,0 +1,17 @@
+# aur-manager pre-build hook for paru.
+#
+# Install: merge the [options] line below into your ~/.config/paru/paru.conf
+# (add it under an existing [options] section, don't duplicate the header).
+# Requires `aur-manager` to be on PATH.
+#
+# Verified against paru v2.1.0 source (src/install.rs:pre_build_command,
+# src/exec.rs:command): PreBuildCommand runs once per package, before that
+# package's build, via `sh -c` with cwd set to the PKGBUILD's directory and
+# $PKGBASE/$VERSION set. A non-zero exit is propagated as an error through
+# paru's install flow and aborts the whole operation before any build starts
+# -- this exit-code-aborts behavior is NOT documented in paru.conf(5); it was
+# confirmed by reading the source directly, so re-verify against your
+# installed paru version if you're relying on it for a hard gate.
+
+[options]
+PreBuildCommand = aur-manager scan --fail-on high .
