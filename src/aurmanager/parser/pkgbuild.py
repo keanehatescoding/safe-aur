@@ -28,9 +28,17 @@ CHECKSUM_KEYS = (
 # the base array, but was previously invisible to every rule that reads
 # ctx.sources/ctx.checksums (RCE004, INT002, INT003), regardless of which
 # architecture a reviewer's machine happens to be. We don't know CARCH
-# statically and don't need to: every arch suffix found is merged in, so
-# nothing hidden behind any of them goes unseen.
-_ARCH_SUFFIX_RE = re.compile(r"^(?:source|" + "|".join(CHECKSUM_KEYS) + r")_(\w+)$")
+# statically and don't need to: every arch suffix the PKGBUILD itself
+# declares in arch=() is merged in, so nothing hidden behind any of them
+# goes unseen.
+#
+# Suffix candidates are restricted to values actually declared in arch=()
+# (not just any array named source_<word>): makepkg itself only ever treats
+# source_<arch>/<checksum>_<arch> as a real override when <arch> matches a
+# declared architecture, so an unrelated array that happens to be named e.g.
+# source_notes or sha256sums_backup is not something makepkg would ever
+# consume as source data, and merging it in would inject non-source content
+# into ctx.sources/ctx.checksums.
 
 
 def _merge_arch_variants(arrays: dict[str, list[str]], base_key: str, arch_suffixes: list[str]) -> list[str]:
@@ -63,7 +71,7 @@ def parse_pkgbuild(path: Path) -> RuleContext:
     # each arch block's source/checksum arrays must be the same length),
     # since both are built by appending the same arch suffixes in the same
     # order.
-    arch_suffixes = sorted({m.group(1) for name in parsed.arrays if (m := _ARCH_SUFFIX_RE.match(name))})
+    arch_suffixes = sorted(set(parsed.arrays.get("arch", [])))
 
     sources = _merge_arch_variants(parsed.arrays, "source", arch_suffixes)
     checksums = {

@@ -29,10 +29,13 @@ def test_sources_include_architecture_specific_arrays(tmp_path):
         """,
     )
     ctx = parse_pkgbuild(path)
-    assert "https://example.com/foo-$pkgver.tar.gz" in ctx.sources
-    assert "payload::https://raw.githubusercontent.com/attacker/x/main/payload.sh" in ctx.sources
-    assert "other::https://example.com/aarch64-extra.tar.gz" in ctx.sources
-    assert len(ctx.sources) == 3
+    # Merge order is the declared arch=() suffixes, sorted -- "aarch64" before
+    # "x86_64" -- applied after the base source=() array.
+    assert ctx.sources == [
+        "https://example.com/foo-$pkgver.tar.gz",
+        "other::https://example.com/aarch64-extra.tar.gz",
+        "payload::https://raw.githubusercontent.com/attacker/x/main/payload.sh",
+    ]
 
 
 def test_checksums_stay_aligned_with_merged_sources(tmp_path):
@@ -53,6 +56,30 @@ def test_checksums_stay_aligned_with_merged_sources(tmp_path):
     ctx = parse_pkgbuild(path)
     assert ctx.sources == ["https://example.com/a.tar.gz", "https://example.com/b.tar.gz"]
     assert ctx.checksums["sha256sums"] == ["deadbeef", "SKIP"]
+
+
+def test_unrelated_arrays_matching_the_suffix_shape_are_not_merged_in(tmp_path):
+    # Regression: candidate suffixes were originally derived from any array
+    # name matching source_<word>/<checksum-key>_<word>, not just ones the
+    # PKGBUILD actually declares in arch=() -- an unrelated array that happens
+    # to be named source_notes (not a real makepkg architecture override) must
+    # not be merged into ctx.sources, since makepkg itself would never treat
+    # it as source data either.
+    path = _write(
+        tmp_path,
+        """
+        pkgname=foo
+        pkgver=1.0
+        arch=('x86_64')
+        source=("https://example.com/a.tar.gz")
+        sha256sums=('deadbeef')
+        source_notes=("not a real source")
+        sha256sums_backup=('not a real checksum')
+        """,
+    )
+    ctx = parse_pkgbuild(path)
+    assert ctx.sources == ["https://example.com/a.tar.gz"]
+    assert ctx.checksums["sha256sums"] == ["deadbeef"]
 
 
 def test_sources_unaffected_when_no_arch_specific_arrays_present(tmp_path):
