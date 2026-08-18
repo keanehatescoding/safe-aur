@@ -3,6 +3,7 @@ from .exfiltration import (
     EXF002GnupgExfiltration,
     EXF003BrowserCredentialExfiltration,
     EXF004EnvironmentExfiltration,
+    EXF005DeveloperCloudCredentialExfiltration,
 )
 from .integrity import (
     INT001PkgverNetworkCall,
@@ -56,6 +57,7 @@ ALL_RULES = [
     EXF002GnupgExfiltration,
     EXF003BrowserCredentialExfiltration,
     EXF004EnvironmentExfiltration,
+    EXF005DeveloperCloudCredentialExfiltration,
     INT001PkgverNetworkCall,
     INT002SuspiciousSourceHost,
     INT003SkippedChecksumOnNetworkSource,

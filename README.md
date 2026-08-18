@@ -144,6 +144,7 @@ out explicitly rather than given a fabricated citation.
 | EXF002 | Exfiltration | CRITICAL | generic heuristic — same shape, targeting `~/.gnupg/` |
 | EXF003 | Exfiltration | CRITICAL | 2026 Atomic Arch — same shape, targeting browser credential stores |
 | EXF004 | Exfiltration | HIGH | generic heuristic — dumping the environment then uploading it |
+| EXF005 | Exfiltration | CRITICAL | 2026 Atomic Arch — same shape, targeting developer/CI and cloud credential files (AWS/GCP/Azure, Docker, npm, git, `.netrc`, kubeconfig) |
 | INT001 | Integrity | MEDIUM | generic heuristic — `pkgver()` making a live network call |
 | INT002 | Integrity | MEDIUM | generic heuristic — a `source=()` URL pointing at a raw IP or a paste host |
 | INT003 | Integrity | MEDIUM | generic heuristic — `SKIP` checksum on a plain network source |
