@@ -92,7 +92,7 @@ def test_extract_added_lines_resets_hunk_state_per_file_in_multi_file_patch():
 +second
 """
     result = extract_added_lines(diff)
-    added = [l for l in result.split("\n") if l]
+    added = [line for line in result.split("\n") if line]
     assert added == ["first", "second"]
 
 
