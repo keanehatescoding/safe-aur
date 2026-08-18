@@ -25,12 +25,29 @@ def extract_added_lines(source: str) -> str:
     patches don't get full bash-AST treatment: they modify arbitrary file
     types, not just bash, so this is a best-effort textual view, not a real
     parse.
+
+    Tracks whether the current line is inside a hunk (starts at an `@@ ...
+    @@` header, resets at each file's `--- a/file` header) rather than just
+    checking `startswith("+++")` unconditionally -- a naive check misreads a
+    genuinely *added* line whose content itself starts with `+` (e.g. an
+    added `++counter;`) as the `+++ b/file` header, since the raw diff line
+    is `+` (the added-line marker) followed by content starting with `+`,
+    producing `+++counter;`. `+++`/`---` only mean "file header" outside a
+    hunk; inside one, a leading `+` always means "added line", regardless of
+    what character follows. Verified empirically against that exact case,
+    plus multi-file patches (each file's own `--- `/`+++ ` pair must reset
+    hunk state for the next file's hunk to be tracked correctly).
     """
     out_lines: list[str] = []
+    in_hunk = False
     for line in source.splitlines():
-        if line.startswith("+++"):
+        if line.startswith("--- ") or line == "---":
+            in_hunk = False
             out_lines.append("")
-        elif line.startswith("+"):
+        elif line.startswith("@@"):
+            in_hunk = True
+            out_lines.append("")
+        elif in_hunk and line.startswith("+"):
             out_lines.append(line[1:])
         else:
             out_lines.append("")

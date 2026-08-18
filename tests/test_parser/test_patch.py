@@ -56,6 +56,46 @@ def test_extract_added_lines_does_not_treat_plusplusplus_header_as_added_content
     assert "b/configure" not in result
 
 
+def test_extract_added_lines_preserves_added_content_starting_with_plus():
+    # Regression: a genuinely added line whose content itself starts with '+'
+    # (e.g. C's `++counter;`) produces the raw diff line '+++counter;' (the
+    # '+' added-line marker followed by content starting with '+'). A naive
+    # `startswith("+++")` check misreads this as the `+++ b/file` header and
+    # drops it -- '+++' only means "file header" outside a hunk; inside one,
+    # a leading '+' always means "added line" regardless of what follows.
+    diff = """--- a/counter.c
++++ b/counter.c
+@@ -1,3 +1,4 @@
+ int main() {
+   int counter = 0;
+++counter;
+   return 0;
+"""
+    result = extract_added_lines(diff)
+    assert "+counter;" in result.split("\n")
+    assert "b/counter.c" not in result
+
+
+def test_extract_added_lines_resets_hunk_state_per_file_in_multi_file_patch():
+    # Regression: hunk state must reset at each file's own `--- a/file`
+    # header, or a second file's `+++ b/file2` header (encountered while
+    # still "in a hunk" from the first file) gets misread as added content.
+    diff = """--- a/f1
++++ b/f1
+@@ -1,1 +1,2 @@
+ x
++first
+--- a/f2
++++ b/f2
+@@ -1,1 +1,2 @@
+ y
++second
+"""
+    result = extract_added_lines(diff)
+    added = [l for l in result.split("\n") if l]
+    assert added == ["first", "second"]
+
+
 def test_parse_patch_sets_is_patch_and_empty_ast(tmp_path):
     path = tmp_path / "fix.patch"
     path.write_text(_UNIFIED_DIFF)
