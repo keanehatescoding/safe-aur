@@ -56,6 +56,14 @@ class RuleContext:
     sources: list[str] = field(default_factory=list)
     checksums: dict[str, list[str]] = field(default_factory=dict)  # e.g. {"sha256sums": [...]}
 
+    # A sibling .SRCINFO's pkgbase-level source/checksum arrays, if the file
+    # exists next to this PKGBUILD -- see rules/integrity.py:INT006. Not
+    # populated for .install contexts (.SRCINFO describes the PKGBUILD, not
+    # install scripts).
+    srcinfo_present: bool = False
+    srcinfo_sources: list[str] = field(default_factory=list)
+    srcinfo_checksums: dict[str, list[str]] = field(default_factory=dict)
+
     # function name -> function body AST node (or None if not present)
     functions: dict[str, Any] = field(default_factory=dict)
 

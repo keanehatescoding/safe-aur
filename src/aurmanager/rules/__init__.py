@@ -9,6 +9,7 @@ from .integrity import (
     INT002SuspiciousSourceHost,
     INT003SkippedChecksumOnNetworkSource,
     INT005InstallHookPullsUnpinnedDeps,
+    INT006SrcinfoPkgbuildMismatch,
 )
 from .meta import META001UnparseableInput
 from .obfuscation import (
@@ -59,5 +60,6 @@ ALL_RULES = [
     INT002SuspiciousSourceHost,
     INT003SkippedChecksumOnNetworkSource,
     INT005InstallHookPullsUnpinnedDeps,
+    INT006SrcinfoPkgbuildMismatch,
     META001UnparseableInput,
 ]

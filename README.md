@@ -148,6 +148,7 @@ out explicitly rather than given a fabricated citation.
 | INT002 | Integrity | MEDIUM | generic heuristic — a `source=()` URL pointing at a raw IP or a paste host |
 | INT003 | Integrity | MEDIUM | generic heuristic — `SKIP` checksum on a plain network source |
 | INT005 | Integrity | HIGH | 2026 Atomic Arch — a `.install` hook running `npm install`/etc. of an unpinned package |
+| INT006 | Integrity | MEDIUM | generic heuristic — PKGBUILD's checksums/source count don't match the sibling `.SRCINFO` |
 | META001 | Meta | HIGH | *(not an attack pattern)* — the file couldn't be fully parsed, so the scan is incomplete; don't trust a clean result on a file that also triggered this |
 
 Full incident write-ups (dates, technique summaries, citations) live next to each
@@ -165,6 +166,14 @@ fixture in `tests/fixtures/incidents/*/SOURCE.md`.
   constantly on ordinary packages (most legitimate sources have no name resemblance
   to their host at all). Shipping it would have added noise without a grounded reason
   to expect it catches anything real.
+- **`INT006` doesn't compare `.SRCINFO`/PKGBUILD source *URLs* directly.** `.SRCINFO`
+  is fully variable-resolved by makepkg (`source=("$pkgname-$pkgver.tar.gz::...")`
+  becomes a literal string), while `ctx.sources` is the PKGBUILD's raw, unexpanded
+  text — verified by running `makepkg --printsrcinfo` against a real PKGBUILD. A
+  naive comparison would false-positive on nearly every real-world PKGBUILD, which
+  almost universally templates `$pkgname`/`$pkgver` into source URLs. `INT006`
+  compares checksums and array counts instead, which are never templated with bash
+  variables.
 
 ## How detection works
 
