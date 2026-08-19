@@ -19,9 +19,9 @@ jobs:
         python-version: [ "3.11","3.12", "3.13", "3.14"]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v7
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -34,7 +34,14 @@ jobs:
       run: |
         # stop the build if there are Python syntax errors or undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        # Advisory only, deliberately not a merge gate: --exit-zero always
+        # exits 0 regardless of findings. Verified locally that removing it
+        # would fail today: real long-line/complexity/unused-import warnings
+        # exist across src/tests, plus tab-indentation warnings in test
+        # bodies that embed real .SRCINFO-format content (which is itself
+        # tab-indented -- not a style mistake to "fix"). Making this pass
+        # enforcing is a separate follow-up: clean up the genuine findings
+        # and per-file-ignore the fixture-like ones, then drop --exit-zero.
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
       run: |
