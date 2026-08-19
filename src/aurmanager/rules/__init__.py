@@ -19,6 +19,7 @@ from .obfuscation import (
     OBF003HexEscapePayload,
     OBF004Rot13DecodeExec,
 )
+from .patch import PAT001PipedExecAddedByPatch
 from .persistence import (
     PER001ShellRcWrite,
     PER002CronPersistence,
@@ -64,4 +65,5 @@ ALL_RULES = [
     INT005InstallHookPullsUnpinnedDeps,
     INT006SrcinfoPkgbuildMismatch,
     META001UnparseableInput,
+    PAT001PipedExecAddedByPatch,
 ]

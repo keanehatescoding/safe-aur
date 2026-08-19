@@ -43,12 +43,23 @@ class Finding:
 
 @dataclass
 class RuleContext:
-    """Everything a Rule needs to inspect one parsed file (PKGBUILD or .install)."""
+    """Everything a Rule needs to inspect one parsed file (PKGBUILD, .install, or
+    a source=() patch/diff)."""
 
     file: Path
     source: str
     ast: Any | None  # bashlex AST root node, or None if parsing failed
     parse_error: str | None = None
+
+    # True for a RuleContext built from a .patch/.diff file (see
+    # parser/patch.py) -- `source` there is not bash, it's a unified diff with
+    # everything except added-line content blanked out (see
+    # parser/patch.py:extract_added_lines), so ast/functions/module_scope are
+    # always empty/None and AST-walking rules correctly find nothing. Lets a
+    # rule that specifically targets patch content (see rules/patch.py) avoid
+    # double-reporting the same construct an AST-based rule already covers
+    # precisely when scanning a real PKGBUILD/.install.
+    is_patch: bool = False
 
     # Structured fields extracted by parser/pkgbuild.py or parser/install_script.py.
     pkgname: str | None = None

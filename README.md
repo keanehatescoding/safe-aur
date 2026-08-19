@@ -27,8 +27,8 @@ aur-manager scan <path>
 
 `<path>` is either a `PKGBUILD` file or a directory containing one (an AUR git
 checkout, typically) — any `*.install` scripts next to it are scanned too.
-`*.patch`/`*.diff` files are located but not currently scanned (they're unified
-diffs, not bash, so the existing rules don't apply to them directly).
+`*.patch`/`*.diff` files are scanned as well, but only partially: only the
+lines they *add* are checked (see "How detection works" below for why).
 
 ```console
 $ aur-manager scan ./some-aur-package
@@ -150,6 +150,7 @@ out explicitly rather than given a fabricated citation.
 | INT003 | Integrity | MEDIUM | generic heuristic — `SKIP` checksum on a plain network source |
 | INT005 | Integrity | HIGH | 2026 Atomic Arch — a `.install` hook running `npm install`/etc. of an unpinned package |
 | INT006 | Integrity | MEDIUM | generic heuristic — PKGBUILD's checksums/source count don't match the sibling `.SRCINFO` |
+| PAT001 | Remote code execution | CRITICAL | generic heuristic — a `.patch`/`.diff` file *adds* a curl/wget-piped-into-a-shell line, hiding RCE001's exact technique inside a file the patch modifies rather than the PKGBUILD itself |
 | META001 | Meta | HIGH | *(not an attack pattern)* — the file couldn't be fully parsed, so the scan is incomplete; don't trust a clean result on a file that also triggered this |
 
 Full incident write-ups (dates, technique summaries, citations) live next to each
@@ -193,6 +194,17 @@ Because PKGBUILD is *sourced* by makepkg, top-level statements run immediately w
 the file loads, not only when a function is called — rules inspect that top-level
 scope the same way they inspect `build()`/`package()`, not just the named
 lifecycle functions.
+
+`.patch`/`.diff` files get a different, narrower treatment: they modify arbitrary
+file types (C source, Makefiles, shell scripts, ...), not just bash, so there's no
+AST to walk the way there is for a PKGBUILD. Only the lines a patch *adds* (`+`
+prefix, verified against real `diff -u`/`git diff` output) are extracted and handed
+to the same regex-based rules that already scan PKGBUILD/.install text (`OBF001`,
+`PER001`, etc.), plus `PAT001`, a text-only variant of `RCE001` specifically for
+patch content. Line numbers in a patch finding refer to the `.patch` file itself,
+not the file it patches. Removed lines, context lines, and constructs split across
+a removed-and-added pair are out of scope — a best-effort textual view, not a real
+parse, deliberately narrower than the PKGBUILD/.install AST layer.
 
 ## Development
 
